@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 import time
 import uuid
 import string
@@ -12,6 +13,7 @@ from flask_mail import Mail, Message
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from supabase_client import supabase
+from dateutil import parser
 
 # Load environment
 load_dotenv()
@@ -195,8 +197,8 @@ def login():
     # =================================================================
     if user.get('lockout_until'):
         # Parse the timestamp from the database
-        lockout_time = datetime.fromisoformat(user['lockout_until'].replace('Z', '+00:00'))
-        
+        #lockout_time = datetime.fromisoformat(user['lockout_until'].replace('Z', '+00:00'))
+        lockout_time = parser.isoparse(user['lockout_until'])
         # If the current time is before the lockout time, block the login
         if datetime.now(timezone.utc) < lockout_time:
             remaining_seconds = (lockout_time - datetime.now(timezone.utc)).total_seconds()
@@ -485,129 +487,138 @@ def mark_read():
 
 
 
-# TEXT MODERATION END POINT
+# block words code for files.txt
+# --- Load blocked words from MULTIPLE files ---
+BLOCKED_WORDS = set()
 
-# --- New endpoint for real-time text moderation ---
-# @app.route('/api/moderate-text', methods=['POST'])
-# def moderate_text():
-#     if 'user_id' not in session:
-#         return jsonify({"success": False, "error": "Unauthorized"}), 401
+def load_list_from_file(filepath, word_set):
+    """Helper function to load a single file into the main set."""
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            words = [line.strip().lower() for line in f if line.strip()]
+            word_set.update(words) # Use update() to add all words from the list
+            return len(words)
+    except FileNotFoundError:
+        print(f"--- INFO: Blocklist file not found, skipping: {filepath}")
+        return 0
+    except Exception as e:
+        print(f"--- ERROR loading {filepath}: {e}")
+        return 0
 
-#     # Check if user is locked out
-#     if 'lockout_until' in session and time.time() < session['lockout_until']:
-#         return jsonify({
-#             "success": False,
-#             "error": "You are temporarily locked out."
-#         }), 429 # 429 Too Many Requests
-
-#     text_to_check = request.json.get("text")
-#     if not text_to_check:
-#         return jsonify({"is_harmful": False}) # Nothing to check
-
-#     # Prepare the request for the Perspective API
-#     api_request_data = {
-#         'comment': {'text': text_to_check},
-#         'languages': ['en'],
-#         'requestedAttributes': {'TOXICITY': {}}
-#     }
-
-#     try:
-#         response = requests.post(PERSPECTIVE_API_URL, json=api_request_data)
-#         response.raise_for_status() # Raise an exception for bad status codes
-#         api_response = response.json()
-
-#         # Get the toxicity score (it's a probability from 0.0 to 1.0)
-#         toxicity_score = api_response['attributeScores']['TOXICITY']['summaryScore']['value']
-
-#         # We define "harmful" as any text with a toxicity score > 0.7
-#         # You can adjust this threshold.
-#         is_harmful = toxicity_score > 0.7
-
-#         return jsonify({"success": True, "is_harmful": is_harmful, "score": toxicity_score})
-
-#     except requests.exceptions.RequestException as e:
-#         print(f"Error calling Perspective API: {e}")
-#         # Don't block the user if the moderation service fails
-#         return jsonify({"success": False, "is_harmful": False})
+def load_blocked_words():
+    """Loads words from all blocklist files into one master set."""
+    global BLOCKED_WORDS
+    BLOCKED_WORDS.clear() # Start with an empty set
+    
+    # 2. (NEW) Your Hinglish-specific list
+    hinglish_count = load_list_from_file('custom_blocklist_hinglish.txt', BLOCKED_WORDS)
+        
+    # Updated print statement to show what was loaded
+    print(f"--- Successfully loaded {len(BLOCKED_WORDS)} total unique blocked words.")
+    print(f"    (Loaded:{hinglish_count} Hinglish)")
 
 
+def check_for_blocked_words(text):
+    """
+    Checks if any part of the text contains a blocked word.
+    This is a simple 'string in string' check, which is more
+    effective for slang and variations than a 'whole word' check.
+    """
+    if not BLOCKED_WORDS:
+        return False
+        
+    text_lower = text.lower()
+    for word in BLOCKED_WORDS:
+        if word in text_lower:
+            return True # Found a match
+            
+    return False
 
 
-# new add text moderation endpoint
-# --- New endpoint for real-time text moderation ---
+load_blocked_words()
+# REPLACE your moderate_text function with this one
+
 @app.route('/api/moderate-text', methods=['POST'])
 def moderate_text():
     if 'user_id' not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-
-    user_id = session['user_id']
     
-    # =================================================================
-    # --- BUG FIX (see section 2 below) ---
-    # We should check the database for lockout, not the session
-    try:
-        user_resp = supabase.table("users").select("lockout_until").eq("id", user_id).execute()
-        if not user_resp.data:
-            return jsonify({"success": False, "error": "User not found"}), 404
-        
-        user = user_resp.data[0]
-        if user.get('lockout_until'):
-            lockout_time = datetime.fromisoformat(user['lockout_until'].replace('Z', '+00:00'))
-            if datetime.now(timezone.utc) < lockout_time:
-                remaining_seconds = (lockout_time - datetime.now(timezone.utc)).total_seconds()
-                remaining_minutes = max(1, round(remaining_seconds / 60))
-                return jsonify({
-                    "success": False, 
-                    "error": f"Account locked. Please try again in {remaining_minutes} minute(s).",
-                    "is_harmful": True # Treat as harmful to prevent sending
-                }), 429 # 429 Too Many Requests
-    except Exception as e:
-        print(f"Error checking user lockout: {e}")
-        # Fail safe: allow message but log error
-    # --- END OF BUG FIX ---
-    # =================================================================
-
     text_to_check = request.json.get("text")
-    if not text_to_check:
-        return jsonify({"is_harmful": False}) # Nothing to check
+    if not text_to_check or len(text_to_check) < 3:
+        return jsonify({"success": True, "is_harmful": False})
 
-    # Prepare the request for the Perspective API
+    # === LAYER 1: Custom Keyword List (Marathi/Hinglish) ===
+    if check_for_blocked_words(text_to_check):
+        print("MODERATION: Blocked by Layer 2 (Custom Keyword)")
+        return jsonify({
+            "success": True, 
+            "is_harmful": True, 
+            "reason": "This language is not allowed."
+        })
+
+    # === LAYER 2: Advanced AI (Context & Threats) ===
     api_request_data = {
         'comment': {'text': text_to_check},
-        # =================================================================
-        # --- ACCURACY IMPROVEMENT ---
-        # Provide all languages you want to monitor.
-        # The API will auto-detect from this list.
-        'languages': ['en', 'hi', 'hi-Latn'],
-        # --- END OF IMPROVEMENT ---
-        # =================================================================
-        'requestedAttributes': {'TOXICITY': {}}
+        'languages': ['en'],
+        'requestedAttributes': {
+            'TOXICITY': {},
+            'SEVERE_TOXICITY': {},
+            'THREAT': {},
+            'IDENTITY_ATTACK': {},
+            'INSULT': {},
+            'SEXUALLY_EXPLICIT': {}
+        }
     }
 
     try:
-        response = requests.post(PERSPECTIVE_API_URL, json=api_request_data)
-        response.raise_for_status() # Raise an exception for bad status codes
-        api_response = response.json()
+        response = requests.post(PERSPECTIVE_API_URL, json=api_request_data, timeout=5)
+        response.raise_for_status()
         
-        # Check if the API was able to score the text
-        if 'attributeScores' not in api_response:
-            # This can happen if language detection fails or text is empty
-            print(f"Perspective API did not return scores: {api_response}")
-            return jsonify({"success": True, "is_harmful": False, "score": 0.0})
+        if 'attributeScores' not in response.json():
+            print(f"Perspective API did not return scores: {response.json()}")
+            return jsonify({"success": True, "is_harmful": False})
 
-        # Get the toxicity score (it's a probability from 0.0 to 1.0)
-        toxicity_score = api_response['attributeScores']['TOXICITY']['summaryScore']['value']
+        scores = response.json()['attributeScores']
+        
+        # --- DEBUGGING ---
+        print("--- AI SCOREBOARD ---")
+        print(scores)
+        print("---------------------")
+        # --- END DEBUGGING ---
 
-        # We define "harmful" as any text with a toxicity score > 0.7
-        # You can adjust this threshold.
-        is_harmful = toxicity_score > 0.7
+        # === NEW, MORE SENSITIVE THRESHOLDS ===
+        
+        # We are lowering thresholds based on your test results.
+        
+        if scores['THREAT']['summaryScore']['value'] > 0.4: # Lowered from 0.5
+            print("MODERATION: Blocked by Layer 3 (THREAT)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Threats are not tolerated."})
+            
+        if scores['IDENTITY_ATTACK']['summaryScore']['value'] > 0.4: # Lowered from 0.6
+            print("MODERATION: Blocked by Layer 3 (IDENTITY_ATTACK)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Hate speech is not allowed."})
 
-        return jsonify({"success": True, "is_harmful": is_harmful, "score": toxicity_score})
+        if scores['SEVERE_TOXICITY']['summaryScore']['value'] > 0.5: # Lowered from 0.6
+            print("MODERATION: Blocked by Layer 3 (SEVERE_TOXICITY)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Abusive language is not allowed."})
+            
+        if scores['INSULT']['summaryScore']['value'] > 0.5: # Lowered from 0.65
+            print("MODERATION: Blocked by Layer 3 (INSULT)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Personal attacks are not allowed."})
+
+        if scores['SEXUALLY_EXPLICIT']['summaryScore']['value'] > 0.35: # Lowered from 0.7
+            print("MODERATION: Blocked by Layer 3 (SEXUALLY_EXPLICIT)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Explicit content is not allowed."})
+            
+        if scores['TOXICITY']['summaryScore']['value'] > 0.65: # Lowered from 0.75
+            print("MODERATION: Blocked by Layer 3 (TOXICITY)")
+            return jsonify({"success": True, "is_harmful": True, "reason": "Please use respectful language."})
+
+        # If all checks pass, the text is clean
+        return jsonify({"success": True, "is_harmful": False})
 
     except requests.exceptions.RequestException as e:
         print(f"Error calling Perspective API: {e}")
-        # Don't block the user if the moderation service fails
-        # Fail-open (allow the message) to not disrupt user experience
         return jsonify({"success": True, "is_harmful": False})
 
 

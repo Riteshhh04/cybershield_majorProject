@@ -1,5 +1,6 @@
 // static/js/chat.js
 (function () {
+
   if (typeof userId === "undefined" || !userId) {
     console.warn("chat.js: userId not defined; chat will not initialize.");
     return;
@@ -20,6 +21,57 @@
   let receiverId = null;
   let receiverName = null;
   const displayedIds = new Set();
+
+
+
+  // --- NEW HELPER FUNCTIONS ---
+
+  /**
+   * Checks if two date objects are on the same calendar day.
+   */
+  function isSameDay(date1, date2) {
+    if (!date1 || !date2) return false;
+    return (
+      date1.getFullYear() === date2.getFullYear() &&
+      date1.getMonth() === date2.getMonth() &&
+      date1.getDate() === date2.getDate()
+    );
+  }
+
+  /**
+   * Formats a date for the separator (e.g., "Today", "Yesterday", "October 5, 2025").
+   */
+  function formatDateSeparator(date) {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (isSameDay(date, today)) {
+      return 'Today';
+    }
+    if (isSameDay(date, yesterday)) {
+      return 'Yesterday';
+    }
+    // Default format for older dates
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+
+  /**
+   * Creates and appends a separator div to the chat box.
+   */
+  function appendSeparator(text, cssClass) {
+    const sep = document.createElement('div');
+    sep.className = 'chat-separator ' + (cssClass || '');
+    sep.textContent = text;
+    chatBox.appendChild(sep);
+  }
+
+
+
 
   // --- Helper: Render a message (creates / updates element) ---
   function renderMessageRow(msg) {
@@ -71,32 +123,65 @@
 
   // --- API Calls ---
 
-  async function loadMessages() {
+ 
+// newloadmessages
+// In static/js/chat.js
+// REPLACE your old loadMessages function with this one
+
+async function loadMessages() {
     if (!receiverId) return;
-    
-    // Key Change: Fetch with two separate user IDs, matching the Flask route.
+
     try {
-      const resp = await fetch(`/api/messages/${userId}/${receiverId}`);
-      const json = await resp.json();
-      
-      if (!json.success) {
-        console.error("Failed to load messages:", json.error);
-        chatBox.innerHTML = `<p class="error-msg">Could not load messages.</p>`;
-        return;
-      }
+        const resp = await fetch(`/api/messages/${userId}/${receiverId}`);
+        const json = await resp.json();
+        if (!json.success) throw new Error(json.error);
 
-      chatBox.innerHTML = "";
-      displayedIds.clear();
-      json.messages.forEach(m => renderMessageRow(m));
-      chatBox.scrollTop = chatBox.scrollHeight;
+        chatBox.innerHTML = ''; // Clear the chat box
+        let lastMessageDate = null;
+        let unreadIndicatorPlaced = false;
 
-      // Mark messages from peer to me as read when opening conversation
-      await markRead(receiverId);
+        // Loop through all messages to add separators
+        for (const msg of json.messages) {
+            const messageDate = new Date(msg.timestamp);
+
+            // 3. LOGIC FOR "NEW MESSAGE" SEPARATOR
+            // Check if this is the first unread message for me
+            if (
+                !unreadIndicatorPlaced &&
+                msg.receiver_id === userId &&
+                msg.status !== 'read'
+            ) {
+                appendSeparator('New Messages', 'unread-separator');
+                unreadIndicatorPlaced = true;
+            }
+
+            // 2. LOGIC FOR DATE SEPARATOR
+            // Check if this message is on a new day
+            if (!isSameDay(lastMessageDate, messageDate)) {
+                appendSeparator(formatDateSeparator(messageDate));
+                lastMessageDate = messageDate;
+            }
+
+            // Render the actual message
+            renderMessageRow(msg);
+        }
+
+        // Scroll to the bottom (or to the unread separator if it exists)
+        const unreadEl = chatBox.querySelector('.unread-separator');
+        if (unreadEl) {
+            unreadEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Now, mark all messages as read *after* we've displayed them
+        await markRead(receiverId);
+
     } catch (e) {
-      console.error("loadMessages error:", e);
-      chatBox.innerHTML = `<p class="error-msg">Error loading messages.</p>`;
+        console.error('loadMessages error:', e);
+        chatBox.innerHTML = `<p class="error-msg">Error loading messages.</p>`;
     }
-  }
+}
 
   async function sendMessage(e) {
     e.preventDefault();
@@ -226,18 +311,14 @@ supabaseClient
   let debounceTimer;
 
 
-// In static/js/chat.js
 
-// This function sends the text to our backend for checking
+
+
+// In static/js/chat.js
+//new update code
 async function checkTextRealtime() {
     const text = messageInput.value;
-    // Remove the old warning div logic
-    // const moderationWarning = document.getElementById('moderation-warning');
-
-    if (text.trim().length < 5) {
-        // No need to do anything if text is short
-        return;
-    }
+    if (text.trim().length < 5) { return; } // Don't check short text
 
     try {
         const res = await fetch('/api/moderate-text', {
@@ -248,15 +329,20 @@ async function checkTextRealtime() {
         const data = await res.json();
 
         if (data.is_harmful) {
-            // Show the SweetAlert2 MODAL instead of the div
+            
+            // --- THIS IS THE CRITICAL LINE ---
+            // It checks for data.reason, or uses a default if it's missing
+            const warningText = data.reason || "Please use respectful language.";
+            // --- END CRITICAL LINE ---
+            
             Swal.fire({
                 icon: 'warning',
-                title: 'Language Warning',
-                text: 'Please use respectful language to continue.',
-                toast: true, // Makes it a less intrusive "toast" notification
-                position: 'top', // Position it at the top
-                showConfirmButton: false, // No "OK" button needed
-                timer: 3000, // Disappears after 3 seconds
+                title: 'Content Warning',
+                text: warningText, // Use the specific reason
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 3000,
                 timerProgressBar: true,
             });
 
@@ -269,6 +355,7 @@ async function checkTextRealtime() {
             }
 
         } else {
+            // Text is OK
             if (receiverId) {
                 messageForm.querySelector('button').disabled = false;
             }

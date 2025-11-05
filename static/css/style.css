@@ -920,3 +920,26 @@ body {
 .hidden {
     display: none;
 }
+
+
+/* new chat separator feature css */
+/* In static/css/chat.css */
+
+.chat-separator {
+    text-align: center;
+    margin: 10px auto;
+    padding: 5px 12px;
+    background-color: #e8e8e8; /* A light grey background */
+    color: #555; /* Darker text */
+    font-size: 0.8em;
+    font-weight: 600;
+    border-radius: 12px;
+    width: fit-content;
+}
+
+/* A slightly different style for "unread" */
+.unread-separator {
+    background-color: #f0f8ff; /* A light blue background */
+    color: #0056b3; /* A strong blue text */
+    border: 1px solid #b0dfff;
+}
