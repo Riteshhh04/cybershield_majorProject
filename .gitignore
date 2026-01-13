@@ -1,11 +1,17 @@
-# Python virtual environment
+# Virtual environment
 venv/
-
-# Python cache
 __pycache__/
 *.pyc
 
-# Secret keys file
-# This is the line that protects your keys!
+# Environment variables
 .env
+# Visual Studio / VS Code
+.vs/
+.vscode/
 
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
