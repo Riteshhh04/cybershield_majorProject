@@ -183,6 +183,8 @@ async function loadMessages() {
     }
 }
 
+  // REPLACE your existing sendMessage function with this one
+
   async function sendMessage(e) {
     e.preventDefault();
     if (!receiverId) return alert("Please select a user to chat with.");
@@ -190,7 +192,7 @@ async function loadMessages() {
     const text = messageInput.value.trim();
     if (!text) return;
     
-    // Optimistic UI: display message immediately with 'sent' status
+    // 1. Optimistic UI: Show message immediately as "sending..."
     const tempMessage = {
         id: `temp-${Date.now()}`,
         sender_id: userId,
@@ -200,7 +202,7 @@ async function loadMessages() {
         status: 'sent'
     };
     renderMessageRow(tempMessage);
-    messageInput.value = "";
+    messageInput.value = ""; // Clear input immediately
 
     try {
       const res = await fetch("/api/messages", {
@@ -208,20 +210,32 @@ async function loadMessages() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: text, recipient_id: receiverId })
       });
+      
       const json = await res.json();
       
-      // Replace temp message with actual message from server
+      // Remove the optimistic "temp" message
       const tempEl = chatBox.querySelector(`[data-id="${tempMessage.id}"]`);
       if (tempEl) tempEl.remove();
 
-      if (!json.success) {
-        console.error("Send failed:", json.error);
-        // Optionally, show an error indicator on the failed message
+      // 2. CHECK FOR ERRORS (The Fix)
+      if (!json.success || !res.ok) {
+        // A. Show the error alert (e.g., "⛔ You are temporarily banned...")
+        alert(json.error || json.message || "Message blocked.");
+
+        // B. If status is 403 (Forbidden/Banned), reload the page to lock them out completely
+        if (res.status === 403) {
+            window.location.reload();
+        }
       } else {
+        // C. Success: Render the real message from the server
         renderMessageRow(json.message_row);
       }
+
     } catch (err) {
       console.error("sendMessage error:", err);
+      // Optional: Restore text to input if network error occurs
+      messageInput.value = text; 
+      alert("Network error. Please try again.");
     }
   }
 

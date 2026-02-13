@@ -5,7 +5,7 @@ import time
 import uuid
 import string
 import secrets
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
 import requests
 from supabase import Client, create_client
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from supabase_client import supabase
 from dateutil import parser
+
+
+
+
+
 
 # Load environment
 load_dotenv()
@@ -28,6 +33,13 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")  # service key
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY") # anon key
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
+
+
+
+#network logger middleware
+from network_logger import log_request_info
+app.after_request(log_request_info)
 
 PERSPECTIVE_API_KEY = os.environ.get("PERSPECTIVE_API_KEY")
 PERSPECTIVE_API_URL = f"https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key={PERSPECTIVE_API_KEY}"
@@ -48,6 +60,60 @@ app.config.update(
 mail = Mail(app)
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", app.config.get("MAIL_USERNAME"))
 BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
+
+
+
+# CYBERSHIELD IN-MEMORY WAF (Web Application Firewall)
+# =================================================================
+# This acts as our ultra-fast RAM cache for blocked IPs
+BANNED_IPS = set()
+INTERNAL_API_KEY = "CyberShield_WAF_Secret_998877" # Security measure
+
+@app.before_request
+def active_firewall():
+    """
+    LAYER 7 MITIGATION: Drops malicious IPs in nanoseconds.
+    Includes a Whitelist to prevent locking out the Admin Command Center.
+    """
+    # 1. Define safe routes that should NEVER be blocked
+    whitelisted_routes = [
+        '/admin_dashboard',
+        '/api/admin_dashboard/network',
+        '/api/admin_dashboard/bullying',
+        '/api/internal/block_ip',
+        '/static' # Allow CSS/JS files to load on the dashboard
+    ]
+    
+    # 2. Check if the current request is trying to access a safe route
+    # request.path.startswith allows /static/css/style.css to pass
+    for route in whitelisted_routes:
+        if request.path.startswith(route):
+            return # Let the admin through safely!
+
+    # 3. If it's a normal route (like the homepage, login, or chat), apply the blocklist
+    if request.remote_addr in BANNED_IPS:
+        abort(403, description="Connection Dropped: IP blocked by CyberShield AI.")
+
+@app.route('/api/internal/block_ip', methods=['POST'])
+def internal_block_ip():
+    """
+    CONTROL PLANE API: The AI Detector calls this to update the RAM cache.
+    """
+    # 1. Verify this request is actually coming from our Detector script
+    if request.headers.get("X-API-KEY") != INTERNAL_API_KEY:
+        return {"error": "Unauthorized"}, 401
+    
+    # 2. Add the malicious IP to the RAM cache
+    data = request.json
+    ip_to_block = data.get("ip")
+    
+    if ip_to_block:
+        BANNED_IPS.add(ip_to_block)
+        print(f"\n[WAF] Mitigated Threat: {ip_to_block} added to RAM blocklist.\n")
+        return {"success": True, "message": f"{ip_to_block} blocked."}
+    
+    return {"error": "No IP provided"}, 400
+
 
 # ---------- Helpers ----------
 def generate_random_password(length=10):
@@ -410,19 +476,75 @@ def get_messages(user1_id, user2_id):
 
 
 
-# --- Send Message ---
+# --- Send Message (SECURITY ENHANCED) ---
 @app.route('/api/messages', methods=['POST'])
 def send_message():
+    # 1. Auth Check
     if 'user_id' not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
+
     try:
         data = request.json
         sender_id = session.get("user_id")
-        receiver_id = data.get("recipient_id") # JS sends 'recipient_id'
-        message_text = data.get("content")      # JS sends 'content'
+        username = session.get("username") # We need this for the dashboard log
+        receiver_id = data.get("recipient_id") 
+        message_text = data.get("content")
 
         if not sender_id or not receiver_id or not message_text:
             return jsonify({"success": False, "error": "Missing required fields"}), 400
+
+        # ---------------------------------------------------------
+        # SECURITY LAYER: CHECK LOCKOUT & TOXICITY
+        # ---------------------------------------------------------
+        
+        # A. Check if user is currently banned
+        user_res = supabase.table('users').select('lockout_until, offense_count').eq('id', sender_id).execute()
+        user_data = user_res.data[0] if user_res.data else {}
+        
+        if user_data.get('lockout_until'):
+            # Use dateutil parser to handle the timestamp format safely
+            lockout_time = parser.isoparse(user_data['lockout_until'])
+            # Ensure comparison is timezone-aware (UTC)
+            if lockout_time > datetime.now(timezone.utc):
+                 return jsonify({"success": False, "error": "⛔ You are temporarily banned from chatting due to toxic behavior."}), 403
+
+        # B. Check for Toxicity
+        # We use your existing 'check_for_blocked_words' function + a hardcoded list for the demo
+        demo_bad_words = ["stupid", "idiot", "hate", "kill", "abuse", "useless", "trash"]
+        is_toxic = any(word in message_text.lower() for word in demo_bad_words) or check_for_blocked_words(message_text)
+
+        if is_toxic:
+            print(f"[SECURITY] Blocking toxic message from {username}")
+
+            # 1. Log to 'incidents' table (Populates Dashboard Log)
+            supabase.table('incidents').insert({
+                "user_id": sender_id,
+                "username": username,
+                "message": message_text,
+                "category": "Toxic Language"
+            }).execute()
+
+            # 2. Update Offense Count (Populates User Violations Table)
+            current_offenses = user_data.get('offense_count') or 0
+            new_count = current_offenses + 1
+            update_data = {"offense_count": new_count}
+
+            # 3. Auto-Lockout Logic (3 Strikes Rule)
+            if new_count >= 3:
+                # Lockout for 30 minutes
+                ban_until = (datetime.now(timezone.utc) + timedelta(minutes=30)).isoformat()
+                update_data["lockout_until"] = ban_until
+                print(f"[SECURITY] User {username} LOCKED OUT until {ban_until}")
+
+            # Commit updates to User
+            supabase.table('users').update(update_data).eq('id', sender_id).execute()
+
+            # 4. BLOCK THE MESSAGE (Do not save to 'messages' table)
+            return jsonify({"success": False, "error": "⚠️ Message blocked: Toxic content detected. This incident has been logged."}), 400
+
+        # ---------------------------------------------------------
+        # IF SAFE: PROCEED NORMALLY
+        # ---------------------------------------------------------
 
         insert_data = {
             "sender_id": sender_id,
@@ -434,12 +556,13 @@ def send_message():
 
         result = supabase.table("messages").insert(insert_data).execute()
 
-        # Check for errors from the Supabase API call
         if hasattr(result, 'error') and result.error:
             return jsonify({"success": False, "error": result.error.message}), 500
 
         return jsonify({"success": True, "message_row": result.data[0]})
+
     except Exception as e:
+        print(f"Chat Error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
@@ -536,10 +659,13 @@ def check_for_blocked_words(text):
 
 
 load_blocked_words()
-# REPLACE your moderate_text function with this one
+
+
+# === REPLACE YOUR EXISTING moderate_text FUNCTION WITH THIS ===
 
 @app.route('/api/moderate-text', methods=['POST'])
 def moderate_text():
+    # 1. Auth Check
     if 'user_id' not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
@@ -547,26 +673,64 @@ def moderate_text():
     if not text_to_check or len(text_to_check) < 3:
         return jsonify({"success": True, "is_harmful": False})
 
-    # === LAYER 1: Custom Keyword List (Marathi/Hinglish) ===
-    if check_for_blocked_words(text_to_check):
-        print("MODERATION: Blocked by Layer 2 (Custom Keyword)")
+    sender_id = session.get("user_id")
+    username = session.get("username")
+
+    # Helper function to Log Incident & Punish User
+    def handle_toxic_detection(reason, source_layer):
+        print(f"[SECURITY] Toxic content detected by {source_layer}: {reason}")
+        
+        # A. Log to 'incidents' table (Dashboard Live Log)
+        try:
+            supabase.table('incidents').insert({
+                "user_id": sender_id,
+                "username": username,
+                "message": text_to_check, 
+                "category": f"Blocked by {source_layer}"
+            }).execute()
+        except Exception as e:
+            print(f"Error logging incident: {e}")
+
+        # B. Increment Offense Count (Dashboard Violations Table)
+        try:
+            # Fetch current count
+            user_res = supabase.table('users').select('offense_count').eq('id', sender_id).execute()
+            current_count = user_res.data[0].get('offense_count', 0) if user_res.data else 0
+            new_count = current_count + 1
+            
+            update_data = {"offense_count": new_count}
+
+            # C. Auto-Lockout (3 Strikes)
+            if new_count >= 3:
+                # Lockout for 5 minutes
+                ban_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+                update_data["lockout_until"] = ban_until
+                print(f"[SECURITY] User {username} LOCKED OUT until {ban_until}")
+
+            supabase.table('users').update(update_data).eq('id', sender_id).execute()
+        except Exception as e:
+            print(f"Error updating user stats: {e}")
+
+        # Return the 'True' flag so Frontend disables the button
         return jsonify({
             "success": True, 
             "is_harmful": True, 
-            "reason": "This language is not allowed."
+            "reason": reason
         })
 
-    # === LAYER 2: Advanced AI (Context & Threats) ===
+    # === LAYER 1: Custom Keyword List ===
+    # This catches "stupid", "idiot" from your local file
+    if check_for_blocked_words(text_to_check):
+        return handle_toxic_detection("Prohibited Language", "Keyword Filter")
+
+    # === LAYER 2: Perspective API (AI) ===
+    # This catches "You are useless" (Contextual toxicity)
     api_request_data = {
         'comment': {'text': text_to_check},
         'languages': ['en'],
         'requestedAttributes': {
-            'TOXICITY': {},
-            'SEVERE_TOXICITY': {},
-            'THREAT': {},
-            'IDENTITY_ATTACK': {},
-            'INSULT': {},
-            'SEXUALLY_EXPLICIT': {}
+            'TOXICITY': {}, 'SEVERE_TOXICITY': {}, 'THREAT': {}, 
+            'IDENTITY_ATTACK': {}, 'INSULT': {}, 'SEXUALLY_EXPLICIT': {}
         }
     }
 
@@ -575,53 +739,32 @@ def moderate_text():
         response.raise_for_status()
         
         if 'attributeScores' not in response.json():
-            print(f"Perspective API did not return scores: {response.json()}")
             return jsonify({"success": True, "is_harmful": False})
 
         scores = response.json()['attributeScores']
         
-        # --- DEBUGGING ---
-        print("--- AI SCOREBOARD ---")
-        print(scores)
-        print("---------------------")
-        # --- END DEBUGGING ---
-
-        # === NEW, MORE SENSITIVE THRESHOLDS ===
-        
-        # We are lowering thresholds based on your test results.
-        
-        if scores['THREAT']['summaryScore']['value'] > 0.4: # Lowered from 0.5
-            print("MODERATION: Blocked by Layer 3 (THREAT)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Threats are not tolerated."})
+        # Check thresholds
+        if scores['THREAT']['summaryScore']['value'] > 0.4:
+            return handle_toxic_detection("Threat Detected", "AI Model")
             
-        if scores['IDENTITY_ATTACK']['summaryScore']['value'] > 0.4: # Lowered from 0.6
-            print("MODERATION: Blocked by Layer 3 (IDENTITY_ATTACK)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Hate speech is not allowed."})
+        if scores['SEVERE_TOXICITY']['summaryScore']['value'] > 0.5:
+             return handle_toxic_detection("Severe Toxicity", "AI Model")
+             
+        if scores['IDENTITY_ATTACK']['summaryScore']['value'] > 0.4:
+             return handle_toxic_detection("Hate Speech", "AI Model")
 
-        if scores['SEVERE_TOXICITY']['summaryScore']['value'] > 0.5: # Lowered from 0.6
-            print("MODERATION: Blocked by Layer 3 (SEVERE_TOXICITY)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Abusive language is not allowed."})
-            
-        if scores['INSULT']['summaryScore']['value'] > 0.5: # Lowered from 0.65
-            print("MODERATION: Blocked by Layer 3 (INSULT)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Personal attacks are not allowed."})
+        if scores['INSULT']['summaryScore']['value'] > 0.5:
+             return handle_toxic_detection("Personal Insult", "AI Model")
+             
+        if scores['TOXICITY']['summaryScore']['value'] > 0.65:
+             return handle_toxic_detection("Toxic Language", "AI Model")
 
-        if scores['SEXUALLY_EXPLICIT']['summaryScore']['value'] > 0.35: # Lowered from 0.7
-            print("MODERATION: Blocked by Layer 3 (SEXUALLY_EXPLICIT)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Explicit content is not allowed."})
-            
-        if scores['TOXICITY']['summaryScore']['value'] > 0.65: # Lowered from 0.75
-            print("MODERATION: Blocked by Layer 3 (TOXICITY)")
-            return jsonify({"success": True, "is_harmful": True, "reason": "Please use respectful language."})
-
-        # If all checks pass, the text is clean
+        # If clean
         return jsonify({"success": True, "is_harmful": False})
 
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         print(f"Error calling Perspective API: {e}")
         return jsonify({"success": True, "is_harmful": False})
-
-
 
 # moderation lockout function
 # In app.py
@@ -642,9 +785,147 @@ def set_lockout():
     return jsonify({"success": True})
 
 
+########ADMIN MODULE
+
+# === ROUTE: DASHBOARD PAGE ===
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    return render_template('admin_dashboard.html')
 
 
+# ADMIN DASHBOARD APIs (for charts and tables)
+# === API 1: CYBERBULLYING DATA ===
+@app.route('/api/admin_dashboard/bullying')
+def api_bullying():
+    try:
+        # 1. Get Repeat Offenders (From your existing 'users' table)
+        # We filter for users who have offense_count > 0
+        offenders = supabase.table('users')\
+            .select('username, offense_count, lockout_until')\
+            .gt('offense_count', 0)\
+            .order('offense_count', desc=True)\
+            .limit(5)\
+            .execute()
+        
+        # 2. Get Recent Incidents (From the new 'incidents' table)
+        incidents = supabase.table('incidents')\
+            .select('*')\
+            .order('timestamp', desc=True)\
+            .limit(10)\
+            .execute()
+        
+        return jsonify({
+            "offenders": offenders.data,
+            "incidents": incidents.data
+        })
+    except Exception as e:
+        print(f"Supabase Error: {e}")
+        return jsonify({"offenders": [], "incidents": []})
 
+# === API 2: NETWORK DATA (Real-time Graph & Alerts) ===
+@app.route('/api/admin_dashboard/network')
+def api_network():
+    # Set default "None" so the frontend doesn't crash if empty
+    data = {"rps": 0, "status": "Normal", "recent_logs": [], "latest_alert": "None"}
+    
+    # Force Absolute Path to ensure we find the log file
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    LOG_FILE = os.path.join(BASE_DIR, 'server_traffic.log')
+
+    # --- A. Get Live Traffic Speed (For the Graph) ---
+    try:
+        if os.path.exists(LOG_FILE):
+            with open(LOG_FILE, "r") as f:
+                lines = f.readlines()[-5000:] # Read a large chunk
+                current_time = time.time()
+                recent_count = 0
+                
+                for line in lines:
+                    try:
+                        parts = line.split(',')
+                        # Check if request happened in the last 1 second
+                        if float(parts[0]) > (current_time - 1):
+                            recent_count += 1
+                    except:
+                        continue
+
+                data["rps"] = recent_count
+                
+                if data["rps"] > 50: 
+                    data["status"] = "Critical"
+    except Exception as e:
+        print(f"Dashboard Graph Error: {e}")
+
+    # --- B. Get Cloud Alerts (For the "Last Alert" Text) ---
+    try:
+        # Fetch the most recent alert from your Supabase table
+        alerts = supabase.table('network_alerts')\
+            .select('*')\
+            .order('timestamp', desc=True)\
+            .limit(1)\
+            .execute()
+        
+        # If we got data, format it for the dashboard
+        if getattr(alerts, 'data', None) and len(alerts.data) > 0:
+            last_alert = alerts.data[0]
+            data["latest_alert"] = f"{last_alert['attack_type']} from {last_alert['ip_address']}"
+            
+    except Exception as e:
+        print(f"Supabase Fetch Error: {e}")
+
+    return jsonify(data)
+
+
+#########Mobile Attack Route (For fun testing of the WAF - Not linked anywhere, so it's a "secret" route)
+
+@app.route('/mobile_attack')
+def mobile_attack():
+    """Precision Mobile Attack: Spikes the Error Rate to trigger the AI."""
+    return """
+    <html>
+    <head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+    <body style="text-align:center; padding:50px; font-family:sans-serif; background-color:#1e1e2f; color:white;">
+        <h2>📱 CyberShield Precision Attack</h2>
+        <p>Target: <b>Your PC</b></p>
+        <button onclick="startAttack()" style="padding:20px 40px; background:red; color:white; font-size:24px; border:none; border-radius:10px; font-weight:bold; cursor:pointer;">🔥 LAUNCH ATTACK</button>
+        <h3 id="status" style="margin-top:30px;">Ready</h3>
+        <script>
+            let count = 0;
+            let isBlocked = false;
+
+            function fire() {
+                if (isBlocked) return;
+                
+                // Hit a fake endpoint to generate 404 errors. 
+                // A 100% error rate will trip the AI's anomaly detection.
+                fetch('/this_page_does_not_exist_' + Math.random())
+                .then(res => {
+                    // ONLY show blocked if the WAF actually returns 403 Forbidden
+                    if (res.status === 403) {
+                        isBlocked = true;
+                        document.getElementById('status').innerHTML = "❌ <span style='color:red;'>TRUE WAF BLOCK (403)</span> ❌";
+                    }
+                })
+                .catch(e => { /* Ignore normal server lag */ });
+                
+                count++;
+            }
+
+            function startAttack() {
+                document.getElementById('status').innerText = "Attacking...";
+                // Fire requests at a steady, manageable pace so Flask can log them
+                setInterval(() => {
+                    if (!isBlocked) {
+                        for(let i=0; i<10; i++) fire();
+                        document.getElementById('status').innerText = "Requests Fired: " + count;
+                    }
+                }, 100); 
+            }
+        </script>
+    </body>
+    </html>
+    """
 # ---------- Run ----------
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    # host='0.0.0.0' opens the server to your local Wi-Fi
+    app.run(host='0.0.0.0', port=5000, debug=True)
