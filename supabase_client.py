@@ -6,15 +6,16 @@ from dotenv import load_dotenv
 
 # load_dotenv()
 
-load_dotenv(dotenv_path=".env")
+import os
+from supabase import create_client
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")  # service role key
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("SUPABASE_URL or SUPABASE_KEY is not set in .env")
+    raise Exception("Supabase environment variables missing")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Test connection
 def test_supabase_connection():
