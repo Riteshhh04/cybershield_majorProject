@@ -1,43 +1,98 @@
 {% extends "base.html" %}
 
-{% block title %}Chat{% endblock %}
+{% block title %}CyberShield Chat{% endblock %}
 
 {% block extra_css %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 {% endblock %}
 
 {% block content %}
-<div class="chat-app">
-    <aside class="user-list">
-        <h3>Chats</h3>
-        <ul id="usersUl">
+
+<!-- DASHBOARD STYLE NAVBAR -->
+<nav class="navbar">
+    
+    <a href="{{ url_for('dashboard') }}" class="navbar-brand">
+        <i class="fas fa-shield-alt"></i> CyberShield
+    </a>
+
+    <div class="navbar-nav">
+
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary nav-btn">
+            <i class="fas fa-arrow-left"></i> Dashboard
+        </a>
+
+        <a href="{{ url_for('logout') }}" class="btn btn-secondary nav-btn">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+
+    </div>
+
+</nav>
+
+<div class="chat-layout">
+
+    <!-- USERS SIDEBAR -->
+    <aside class="chat-sidebar">
+
+        <h3 class="sidebar-title">
+            <i class="fas fa-comments"></i> Chats
+        </h3>
+
+        <ul id="usersUl" class="user-list">
             {% for user in users %}
-                <li class="user-item" data-user-id="{{ user.id }}" data-user-name="{{ user.name | e }}">
-                    <span class="user-icon">👤</span>
-                    <span class="user-name">{{ user.name }}</span>
-                </li>
+            <li class="user-item"
+                data-user-id="{{ user.id }}"
+                data-user-name="{{ user.name | e }}">
+                
+                <span class="user-avatar">👤</span>
+
+                <span class="user-name">
+                    {{ user.name }}
+                </span>
+
+            </li>
             {% endfor %}
         </ul>
+
     </aside>
 
-    <section class="chat-window">
+
+    <!-- CHAT AREA -->
+    <section class="chat-area">
+
         <header id="chat-header" class="chat-header">
             <h3 id="chatTitle">Select a user to start chatting</h3>
         </header>
 
-        <div id="chat-box" class="chat-box">
-            </div>
 
-        <form id="message-form" class="message-form">
-            <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" disabled/>
-            <button type="submit" disabled>Send</button>
+        <div id="chat-box" class="chat-box"></div>
+
+
+        <form id="message-form" class="chat-input-area">
+
+            <input
+                type="text"
+                id="message-input"
+                placeholder="Type a message..."
+                autocomplete="off"
+                disabled
+            >
+
+            <button type="submit" disabled>
+                Send
+            </button>
+
         </form>
-        <div id="moderation-warning" class="moderation-warning hidden">  
+
+
+        <div id="moderation-warning" class="moderation-warning hidden">
             ⚠️ Please use respectful language.
         </div>
-<!-- new add above -->
+
     </section>
+
 </div>
+
 {% endblock %}
 
 {% block extra_js %}

@@ -1,0 +1,150 @@
+{% extends "admin_base.html" %}
+{% block title %}Attack Logs{% endblock %}
+
+{% block content %}
+
+<h2 class="text-xl font-bold text-red-400 mb-4">
+<i class="fa-solid fa-bug mr-2"></i>Attack Logs
+</h2>
+
+<!-- FILTERS -->
+
+<div class="flex gap-4 mb-4">
+Start Date: 
+<input id="startDate" type="date" class="bg-slate-700 p-2 rounded">
+End Date:
+<input id="endDate" type="date" class="bg-slate-700 p-2 rounded">
+Select Attack Type: 
+<select id="attackType" class="bg-slate-700 p-2 rounded">
+
+<option value="">All Attacks</option>
+<option value="DDoS">DDoS</option>
+<option value="SQL Injection">SQL Injection</option>
+<option value="XSS">XSS</option>
+<option value="Brute Force">Brute Force</option>
+
+</select>
+
+<button onclick="loadAttacks()" class="bg-blue-600 px-4 py-2 rounded">
+Filter
+</button>
+
+</div>
+
+<!-- TABLE -->
+
+<div class="overflow-x-auto mt-6">
+<table class="min-w-full text-sm text-left border border-slate-700">
+
+<thead class="bg-slate-700 text-slate-200 uppercase text-xs tracking-wider">
+<tr>
+
+<th class="px-6 py-3 text-center">IP Address</th>
+<th class="px-6 py-3 text-center">Location</th>
+<th class="px-6 py-3 text-center">Attack</th>
+<th class="px-6 py-3 text-center">Severity</th>
+<th class="px-6 py-3 text-center">Status</th>
+<th class="px-6 py-3 text-center">Time</th>
+<th class="px-6 py-3 text-center">Action</th>
+
+</tr>
+</thead>
+
+<tbody id="attackTable" class="divide-y divide-slate-700 text-slate-200">
+
+</tbody>
+
+</table>
+</div>
+
+<script>
+
+async function loadAttacks(){
+
+const type=document.getElementById("attackType").value
+const start=document.getElementById("startDate").value
+const end=document.getElementById("endDate").value
+
+let url="/api/admin_dashboards/attacks?"
+
+if(type){
+url+=`type=${type}&`
+}
+
+if(start && end){
+url+=`start=${start}&end=${end}`
+}
+
+const res=await fetch(url)
+const data=await res.json()
+
+const table=document.getElementById("attackTable")
+
+table.innerHTML=""
+
+data.forEach(a=>{
+
+table.innerHTML += `
+<tr class="hover:bg-slate-800 transition">
+
+<td class="px-10 py-3 text-center font-mono text-blue-300">
+${a.ip_address}
+</td>
+
+<td class="px-10 py-3 text-center ">
+${a.location}
+</td>
+
+<td class="px-6 py-3 text-center font-semibold">
+${a.attack_type}
+</td>
+
+<td class="px-6 py-3 text-center font-bold ${a.severity === "CRITICAL" ? "text-red-500" : "text-orange-400"}">
+${a.severity}
+</td>
+
+<td class="px-6 py-3 text-center">
+${a.blocked ? '<span class="text-red-400 font-semibold">Blocked</span>' : '<span class="text-green-400 font-semibold">Active</span>'}
+</td>
+
+<td class="px-6 py-3 text-center">
+${new Date(a.timestamp).toLocaleString()}
+</td>
+
+<td class="px-6 py-3 text-center">
+${
+a.blocked
+? `<button onclick="unblock('${a.ip_address}')"
+class="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-1 rounded font-semibold text-xs">
+Unblock
+</button>`
+: "-"
+}
+</td>
+
+</tr>
+`
+
+})
+
+}
+
+async function unblock(ip){
+
+await fetch("/api/admin_dashboards/unblock_ip",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({ip:ip})
+})
+
+loadAttacks()
+
+
+}
+loadAttacks()
+
+</script>
+
+{% endblock %}

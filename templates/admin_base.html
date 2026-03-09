@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<title>{% block title %}CyberShield Admin{% endblock %}</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+</head>
+
+<body class="bg-slate-900 text-slate-200">
+
+<!-- NAVBAR -->
+
+<nav class="bg-slate-800 border-b border-slate-700 p-4 flex justify-between items-center">
+
+<div class="flex items-center gap-3">
+
+<i class="fa-solid fa-shield-cat text-blue-500 text-2xl"></i>
+
+<h1 class="text-xl font-bold tracking-wider">
+WELCOME CYBERSHIELD <span class="text-blue-500">ADMIN</span>
+</h1>
+
+</div>
+
+<div class="flex gap-8 text-sm font-semibold">
+
+<a href="/admin_dashboards" class="hover:text-blue-400">
+<i class="fa-solid fa-chart-line mr-1"></i> Dashboard
+</a>
+
+<a href="/admin_attack_logs" class="hover:text-blue-400">
+<i class="fa-solid fa-bug mr-1"></i> Attack Logs
+</a>
+
+<a href="/admin_users" class="hover:text-blue-400">
+<i class="fa-solid fa-user-shield mr-1"></i> User Violations
+</a>
+
+<a href="/admin_incidents" class="hover:text-blue-400">
+<i class="fa-solid fa-list mr-1"></i> Incident Logs
+</a>
+
+</div>
+
+<div class="flex gap-4 text-sm">
+
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+DB Connected
+</div>
+
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+AI Active
+</div>
+
+<a href="/logout" class="hover:text-blue-400">
+ Logout
+</a>
+</div>
+
+</nav>
+
+<div class="p-6">
+
+{% block content %}{% endblock %}
+
+</div>
+
+</body>
+</html>

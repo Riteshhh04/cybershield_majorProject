@@ -1,12 +1,12 @@
 <!-- templates/register.html -->
 {% extends "base.html" %}
 
-{% block title %}Register - EduLearn{% endblock %}
+{% block title %}Register - CyberShield{% endblock %}
 
 {% block content %}
 <nav class="navbar">
     <a href="{{ url_for('index') }}" class="navbar-brand">
-        <i class="fas fa-graduation-cap"></i> EduLearn
+        <i class="fas fa-shield-alt"></i> CyberShield
     </a>
 </nav>
 
@@ -16,9 +16,12 @@
             <div class="card-body">
                 <div class="page-header">
                     <h2 class="page-title">
-                        <i class="fas fa-user-plus"></i> Create Account
+                        <i class="fas fa-user-shield"></i> Join CyberShield
                     </h2>
-                    <p class="page-subtitle">Join our learning community today!</p>
+
+                    <p class="page-subtitle">
+                    Create your secure account and start exploring cybersecurity learning modules.
+                    </p>
                 </div>
 
                 <form id="registerForm">
@@ -48,30 +51,56 @@
 
                     <div class="form-group">
                         <label class="form-label">
-                            <i class="fas fa-book"></i> Course of Interest
+                            <i class="fas fa-user-secret"></i> Cybersecurity Learning Track
                         </label>
                         <select name="course" class="form-input form-select" required>
-                            <option value="">Select your course</option>
-                            <option value="Computer Science">Computer Science</option>
-                            <option value="Data Science">Data Science</option>
-                            <option value="Web Development">Web Development</option>
-                            <option value="Digital Marketing">Digital Marketing</option>
-                            <option value="Graphic Design">Graphic Design</option>
-                            <option value="Business Administration">Business Administration</option>
-                            <option value="Cybersecurity">Cybersecurity</option>
-                            <option value="Mobile App Development">Mobile App Development</option>
+
+                            <option value="">Select cybersecurity course</option>
+
+                            <option value="Ethical Hacking Fundamentals">
+                            Ethical Hacking Fundamentals
+                            </option>
+
+                            <option value="Network Security and Intrusion Detection">
+                            Network Security and Intrusion Detection
+                            </option>
+
+                            <option value="Web Application Security">
+                            Web Application Security
+                            </option>
+
+                            <option value="Malware Analysis Basics">
+                            Malware Analysis Basics
+                            </option>
+
+                            <option value="Digital Forensics">
+                            Digital Forensics
+                            </option>
+
+                            <option value="Penetration Testing and Vulnerability Assessment">
+                            Penetration Testing and Vulnerability Assessment
+                            </option>
+
+                            <option value="Cyber Threat Intelligence">
+                            Cyber Threat Intelligence
+                            </option>
+
+                            <option value="Cloud Security Fundamentals">
+                            Cloud Security Fundamentals
+                            </option>
+
                         </select>
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">
-                        <i class="fas fa-rocket"></i> Create My Account
+                        <i class="fas fa-shield-alt"></i> Create Secure Account
                     </button>
                 </form>
 
                 <div class="form-divider">
                     <p>Already have an account?</p>
                     <a href="{{ url_for('login') }}" class="btn btn-secondary">
-                        <i class="fas fa-sign-in-alt"></i> Login Here
+                        <i class="fas fa-lock"></i> Secure Login
                     </a>
                 </div>
             </div>

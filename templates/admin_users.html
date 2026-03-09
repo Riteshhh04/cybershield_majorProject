@@ -1,0 +1,94 @@
+{% extends "admin_base.html" %}
+
+{% block title %}User Violations{% endblock %}
+
+{% block content %}
+
+<h2 class="text-xl font-bold text-purple-400 mb-6">
+<i class="fa-solid fa-user-shield mr-2"></i>User Violations
+</h2>
+
+<div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg overflow-hidden">
+
+<table class="w-full text-sm">
+
+<thead class="bg-slate-700 text-slate-300 uppercase text-xs">
+
+<tr>
+
+<th class="p-3 text-left">User</th>
+<th class="p-3 text-center">Offenses</th>
+<th class="p-3 text-center">Status</th>
+<th class="p-3 text-center">Lockout Until</th>
+
+</tr>
+
+</thead>
+
+<tbody id="usersTable" class="divide-y divide-slate-700">
+
+<!-- data will load here -->
+
+</tbody>
+
+</table>
+
+</div>
+
+<script>
+
+async function loadUsers(){
+
+const res = await fetch('/api/admin_dashboards/bullying')
+const data = await res.json()
+
+const table = document.getElementById("usersTable")
+table.innerHTML=""
+
+const now = new Date()
+
+data.offenders.forEach(u=>{
+
+let status = `<span class="text-green-500 font-bold">ACTIVE</span>`
+let lockout = "—"
+
+if(u.lockout_until){
+
+const lockDate = new Date(u.lockout_until)
+
+if(lockDate > now){
+
+status = `<span class="text-red-500 font-bold">LOCKED</span>`
+lockout = lockDate.toLocaleString()
+
+}
+
+}
+
+table.innerHTML += `
+
+<tr class="hover:bg-slate-700/40">
+
+<td class="p-3 font-semibold text-slate-200">${u.username}</td>
+
+<td class="p-3 text-center font-mono text-purple-400">
+${u.offense_count}
+</td>
+
+<td class="p-3 text-center">${status}</td>
+
+<td class="p-3 text-center text-slate-400">${lockout}</td>
+
+</tr>
+
+`
+
+})
+
+}
+
+loadUsers()
+
+</script>
+
+{% endblock %}

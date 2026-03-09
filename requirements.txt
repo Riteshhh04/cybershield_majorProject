@@ -5,3 +5,13 @@ supabase==2.3.4
 werkzeug==3.0.4
 requests==2.32.3
 httpx==0.24.1
+flask
+gunicorn
+supabase
+requests
+python-dotenv
+flask-mail
+pandas
+scikit-learn
+joblib
+python-dateutil

@@ -4,27 +4,70 @@
 {% block content %}
 <nav class="navbar">
     <a href="/" class="navbar-brand">
-        <i class="fas fa-graduation-cap"></i> EduLearn
+        <i class="fas fa-shield-alt"></i> CyberShield
     </a>
 </nav>
 
 <div class="container">
     <div class="hero-section">
         <h1 class="hero-title">
-            Welcome to EduLearn
+            CyberShield Learning Portal
         </h1>
         <p class="hero-subtitle">
-            Your gateway to knowledge and learning excellence. Join thousands of students in their educational journey with our modern learning management system.
+            CyberShield is a secure educational platform designed to teach cybersecurity concepts while actively protecting users from malicious activities such as cyberbullying, SQL Injection, XSS, phishing, and network attacks.
         </p>
         
         <div class="hero-buttons">
             <a href="{{ url_for('register') }}" class="btn btn-primary">
-                <i class="fas fa-user-plus"></i> Get Started
+                <i class="fas fa-user-shield"></i> Start Learning Securely
             </a>
-            <a href="{{ url_for('login') }}" class="btn btn-secondary">
+            <a href="{{ url_for('login') }}" class="btn btn-primary">
                 <i class="fas fa-sign-in-alt"></i> Login
             </a>
         </div>
     </div>
+
+    <section class="features-section">
+
+        <h2 class="section-title">CyberShield Security Features</h2>
+
+        <div class="features-grid">
+
+        <div class="feature-card">
+        <i class="fas fa-user-secret"></i>
+        <h3>Cyberbullying Detection</h3>
+        <p>
+        Our AI-powered system detects abusive and harmful messages in chats to maintain a safe learning environment.
+        </p>
+        </div>
+
+        <div class="feature-card">
+        <i class="fas fa-bug"></i>
+        <h3>Attack Detection</h3>
+        <p>
+        CyberShield detects SQL Injection, XSS, phishing attempts and brute force attacks in real time.
+        </p>
+        </div>
+
+        <div class="feature-card">
+        <i class="fas fa-network-wired"></i>
+        <h3>Network Anomaly Detection</h3>
+        <p>
+        The platform monitors unusual traffic patterns and automatically blocks suspicious IP addresses.
+        </p>
+        </div>
+
+        <div class="feature-card">
+        <i class="fas fa-shield-virus"></i>
+        <h3>Threat Monitoring</h3>
+        <p>
+        All attacks are logged and visualized in the admin security dashboard for analysis.
+        </p>
+        </div>
+
+        </div>
+
+    </section>
 </div>
+
 {% endblock %}

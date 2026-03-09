@@ -1,0 +1,175 @@
+{% extends "admin_base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<span class="text-sm text-slate-300">
+Welcome, Admin
+</span>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+<!-- NETWORK GRAPH -->
+
+<div class="bg-slate-800 rounded-xl border border-slate-700 p-5">
+
+<h2 class="text-lg font-bold text-blue-400 mb-4">
+<i class="fa-solid fa-server mr-2"></i>Network Traffic
+</h2>
+
+<canvas id="trafficChart"></canvas>
+
+<div class="grid grid-cols-2 gap-4 mt-4">
+
+<div>
+<p class="text-xs text-slate-400">Current Load</p>
+<p class="text-2xl font-bold">
+<span id="rps">0</span> req/sec
+</p>
+</div>
+
+<div>
+<p class="text-xs text-slate-400">Last Alert</p>
+<p id="lastAlert" class="text-red-400 font-bold">None</p>
+</div>
+
+</div>
+
+</div>
+
+<!-- THREAT DETAILS -->
+
+<div class="bg-slate-800 rounded-xl border border-slate-700 p-5">
+
+<h2 class="text-lg font-bold text-red-400 mb-4">
+<i class="fa-solid fa-triangle-exclamation mr-2"></i>Threat Detected
+</h2>
+
+<div class="space-y-2 text-sm">
+
+<p><b>IP Address:</b> <span id="attackIP">None</span></p>
+
+<p><b>Location:</b> <span id="attackLocation">Unknown</span></p>
+
+<p><b>Attack Type:</b> <span id="attackType">None</span></p>
+
+<p><b>Severity:</b> <span id="attackSeverity">Low</span></p>
+
+<p><b>Status:</b> <span id="attackStatus">Safe</span></p>
+
+<p><b>Time:</b> <span id="attackTime">—</span></p>
+
+</div>
+
+</div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+
+const ctx = document.getElementById("trafficChart").getContext("2d")
+
+const chart = new Chart(ctx,{
+
+type:"line",
+
+data:{
+labels:Array(20).fill(""),
+datasets:[{
+data:Array(20).fill(0),
+borderColor:"#3b82f6",
+backgroundColor:"rgba(59,130,246,0.2)",
+fill:true,
+tension:0.4
+}]
+},
+
+options:{
+plugins:{legend:{display:false}},
+animation:false
+}
+
+})
+
+
+
+async function updateDashboard(){
+
+try{
+
+const res = await fetch("/api/admin_dashboards/network")
+
+const data = await res.json()
+
+
+
+/* ---------- GRAPH UPDATE ---------- */
+
+const arr = chart.data.datasets[0].data
+
+arr.shift()
+
+arr.push(data.rps)
+
+chart.update()
+
+
+
+/* ---------- LOAD VALUE ---------- */
+
+document.getElementById("rps").innerText = data.rps
+if(data.rps > 50){
+chart.data.datasets[0].borderColor="#ef4444"
+}else{
+chart.data.datasets[0].borderColor="#3b82f6"
+}
+
+
+/* ---------- LAST ALERT ---------- */
+
+if(data.latest_alert){
+
+document.getElementById("lastAlert").innerText = data.latest_alert
+
+}
+
+
+
+/* ---------- THREAT PANEL ---------- */
+
+if(data.latest_ip){
+
+document.getElementById("attackIP").innerText = data.latest_ip
+
+document.getElementById("attackLocation").innerText = data.location
+
+document.getElementById("attackType").innerText = data.latest_attack
+
+document.getElementById("attackSeverity").innerText = data.severity
+
+document.getElementById("attackStatus").innerText = data.blocked ? "Blocked" : "Active"
+
+document.getElementById("attackTime").innerText =
+new Date(data.time).toLocaleString()
+
+}
+
+}catch(e){
+
+console.error(e)
+
+}
+
+}
+
+
+
+/* ---------- REAL TIME REFRESH ---------- */
+
+setInterval(updateDashboard,1000)
+
+
+
+</script>
+
+{% endblock %}

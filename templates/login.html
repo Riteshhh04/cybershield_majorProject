@@ -2,12 +2,12 @@
 <!-- templates/login.html -->
 {% extends "base.html" %}
 
-{% block title %}Login - EduLearn{% endblock %}
+{% block title %}Secure Login - CyberShield{% endblock %}
 
 {% block content %}
 <nav class="navbar">
     <a href="{{ url_for('index') }}" class="navbar-brand">
-        <i class="fas fa-graduation-cap"></i> EduLearn
+       <i class="fas fa-shield-alt"></i> CyberShield
     </a>
 </nav>
 
@@ -17,18 +17,25 @@
             <div class="card-body">
                 <div class="page-header">
                     <h2 class="page-title">
-                        <i class="fas fa-sign-in-alt"></i> Welcome Back
+                        <i class="fas fa-lock"></i> Secure Login
                     </h2>
-                    <p class="page-subtitle">Sign in to continue your learning journey</p>
+
+                    <p class="page-subtitle">
+                    Access your CyberShield dashboard and continue your cybersecurity learning.
+                    </p>
                 </div>
 
                 <form id="loginForm">
                     <div class="form-group">
                         <label class="form-label">
-                            <i class="fas fa-id-card"></i> Moodle ID
+                            <i class="fas fa-user-shield"></i> CyberShield ID
                         </label>
-                        <input type="text" name="moodle_id" class="form-input" required 
-                               placeholder="EDU25001" maxlength="8" autocomplete="username">
+                        <input type="text" name="moodle_id"
+                            class="form-input"
+                            required
+                            placeholder="EDU25001 or ADMIN001"
+                            maxlength="10"
+                            pattern="^(EDU[0-9]{5}|ADMIN[0-9]{3})$">
                     </div>
 
                     <div class="form-group">
@@ -50,14 +57,20 @@
                     </div>
 
                     <button type="submit" class="btn btn-primary btn-full">
-                        <i class="fas fa-arrow-right"></i> Sign In
+                        <i class="fas fa-shield-alt"></i> Secure Sign In
                     </button>
+
+                    <div class="forgot-password-container">
+                        <a href="{{ url_for('forgot_password') }}" class="forgot-link">
+                            Forgot Password?
+                        </a>
+                    </div>
                 </form>
 
                 <div class="form-divider">
-                    <p>New to EduLearn?</p>
+                    <p>New to CyberShield?</p>
                     <a href="{{ url_for('register') }}" class="btn btn-secondary">
-                        <i class="fas fa-user-plus"></i> Create Account
+                        <i class="fas fa-user-shield"></i> Create Secure Account
                     </a>
                 </div>
             </div>
@@ -68,11 +81,11 @@
             <div class="card-body">
                 <div class="demo-content">
                     <h4 class="demo-title">
-                        <i class="fas fa-info-circle"></i> Demo Information
+                        <i class="fas fa-shield-virus"></i> CyberShield Access Info
                     </h4>
                     <p class="demo-text">
-                        Register first to get your unique Moodle ID and password via email! <br>
-                        Your Moodle ID will be in format: EDU25001, EDU25002, etc.
+                        Register first to get your unique CyberShield ID and password via email! <br>
+                        Your CyberShield ID will be in format: EDU25001, EDU25002, etc.
                     </p>
                 </div>
             </div>

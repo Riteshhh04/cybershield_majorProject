@@ -1,0 +1,62 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Incident Logs{% endblock %}
+
+{% block content %}
+
+<h2 class="text-xl font-bold text-yellow-400 mb-6">
+
+<i class="fa-solid fa-list mr-2"></i>Live Incident Logs
+
+</h2>
+
+<div class="bg-slate-800 rounded-xl border border-slate-700 shadow-lg p-4">
+
+<div class="h-[500px] overflow-y-auto">
+
+<ul id="incidentList" class="space-y-2 text-sm font-mono text-slate-300">
+
+</ul>
+
+</div>
+
+</div>
+
+<script>
+
+async function loadIncidents(){
+
+const res = await fetch('/api/admin_dashboards/bullying')
+const data = await res.json()
+
+const list = document.getElementById("incidentList")
+
+list.innerHTML=""
+
+data.incidents.forEach(i=>{
+
+list.innerHTML += `
+
+<li class="p-2 border border-slate-700 rounded bg-slate-900">
+
+<span class="text-purple-400 font-bold">
+[${i.category}]
+</span>
+
+<span class="text-blue-400">${i.username}</span> :
+
+"${i.message}"
+
+</li>
+
+`
+
+})
+
+}
+
+setInterval(loadIncidents,2000)
+
+</script>
+
+{% endblock %}

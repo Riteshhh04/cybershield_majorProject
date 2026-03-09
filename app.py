@@ -16,10 +16,6 @@ from supabase_client import supabase
 from dateutil import parser
 
 
-
-
-
-
 # Load environment
 load_dotenv()
 
@@ -32,9 +28,9 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")  # service key
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY") # anon key
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-
-
+# Default Admin Credentials
+ADMIN_USERNAME = "ADMIN007"
+ADMIN_PASSWORD = "CyberShield@123"
 
 
 #network logger middleware
@@ -72,9 +68,9 @@ INTERNAL_API_KEY = "CyberShield_WAF_Secret_998877" # Security measure
 @app.before_request
 def active_firewall():
     whitelisted_routes = [
-        '/admin_dashboard',
-        '/api/admin_dashboard/network',
-        '/api/admin_dashboard/bullying',
+        '/admin_dashboards',
+        '/api/admin_dashboards/network',
+        '/api/admin_dashboards/bullying',
         '/api/internal/block_ip',
         '/static'
     ]
@@ -83,7 +79,16 @@ def active_firewall():
         if request.path.startswith(route):
             return
 
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+    client_ip = request.headers.get("X-Forwarded-For")
+
+    if client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    else:
+        client_ip = request.remote_addr
+
+    # Convert IPv6 localhost format
+    if client_ip.startswith("::ffff:"):
+        client_ip = client_ip.replace("::ffff:", "")
 
     if client_ip in BANNED_IPS:
         abort(403, description="Connection Dropped: IP blocked by CyberShield AI.")
@@ -146,15 +151,15 @@ def generate_username():
 
 def send_credentials_email(to_email, name, username, password):
     try:
-        subject = "EduLearn - Your account credentials"
+        subject = "CyberShield - Your account credentials"
         body = (
             f"Hello {name},\n\n"
-            "Your EduLearn account has been created.\n\n"
+            "Your CyberShield account has been created.\n\n"
             f"Username: {username}\n"
             f"Password: {password}\n\n"
             f"Login here: {BASE_URL}/login\n\n"
             "Please change your password after your first login.\n\n"
-            "Regards,\nEduLearn Team"
+            "Regards,\nCyberShield Team"
         )
         msg = Message(subject=subject, sender=SENDER_EMAIL, recipients=[to_email], body=body)
         mail.send(msg)
@@ -229,19 +234,37 @@ def register():
 # new login/lockout functionality
 @app.route("/login", methods=["GET", "POST"])
 def login():
+
     if request.method == "GET":
         return render_template("login.html")
 
-    # Handle POST
     data = request.get_json() or request.form
-    username = data.get("moodle_id") # Assuming 'moodle_id' is the 'username'
+    username = data.get("moodle_id")
     password = data.get("password")
 
     if not username or not password:
         return {"success": False, "message": "Username and password required"}, 400
 
+
+    # ==================================================
+    # ADMIN LOGIN CHECK (MUST COME FIRST)
+    # ==================================================
+    if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+
+        session["admin"] = True
+        session["username"] = ADMIN_USERNAME
+
+        return {
+            "success": True,
+            "message": "Admin login successful",
+            "redirect": "/admin_dashboards"
+        }, 200
+
+
+    # ==================================================
+    # NORMAL USER LOGIN (DATABASE)
+    # ==================================================
     try:
-        # This is your existing code to find the user
         resp = supabase.table("users").select("*").eq("username", username).execute()
     except Exception as e:
         print("Supabase select error:", e)
@@ -251,37 +274,45 @@ def login():
         return {"success": False, "message": "Invalid credentials"}, 400
 
     user = resp.data[0]
-    
-    # =================================================================
-    # --- NEW LOCKOUT CHECK GOES HERE ---
-    # =================================================================
-    if user.get('lockout_until'):
-        # Parse the timestamp from the database
-        #lockout_time = datetime.fromisoformat(user['lockout_until'].replace('Z', '+00:00'))
-        lockout_time = parser.isoparse(user['lockout_until'])
-        # If the current time is before the lockout time, block the login
-        if datetime.now(timezone.utc) < lockout_time:
-            remaining_seconds = (lockout_time - datetime.now(timezone.utc)).total_seconds()
-            remaining_minutes = max(1, round(remaining_seconds / 60)) # Show at least 1 minute
-            
-            return {
-                "success": False, 
-                "message": f"Account locked. Please try again in {remaining_minutes} minute(s)."
-            }, 403 # 403 Forbidden is a good status code for this
-    # --- END OF NEW LOCKOUT CHECK ---
-    
 
-    # Your existing password check and session logic continues here
+
+    # ==================================================
+    # LOCKOUT CHECK
+    # ==================================================
+    if user.get('lockout_until'):
+
+        lockout_time = parser.isoparse(user['lockout_until'])
+
+        if datetime.now(timezone.utc) < lockout_time:
+
+            remaining_seconds = (lockout_time - datetime.now(timezone.utc)).total_seconds()
+            remaining_minutes = max(1, round(remaining_seconds / 60))
+
+            return {
+                "success": False,
+                "message": f"Account locked. Please try again in {remaining_minutes} minute(s)."
+            }, 403
+
+
+    # ==================================================
+    # PASSWORD CHECK
+    # ==================================================
     if not check_password_hash(user["password"], password):
         return {"success": False, "message": "Invalid credentials"}, 400
 
-    # Store session
+
+    # ==================================================
+    # CREATE SESSION
+    # ==================================================
     session.permanent = True
     session["user_id"] = user["id"]
     session["username"] = user["username"]
     session["name"] = user.get("name", "")
 
-    # If user must change password → redirect them there
+
+    # ==================================================
+    # FORCE PASSWORD CHANGE
+    # ==================================================
     if user.get("must_change_password", True):
         return {
             "success": True,
@@ -290,14 +321,15 @@ def login():
             "redirect": "/change-password"
         }, 200
 
-    # Otherwise → go to dashboard 
+
+    # ==================================================
+    # NORMAL DASHBOARD
+    # ==================================================
     return {
         "success": True,
         "message": "Login successful",
         "redirect": "/dashboard"
     }, 200
-
-
 
 
 @app.route("/change-password", methods=["GET", "POST"])
@@ -682,6 +714,35 @@ def moderate_text():
                 "message": text_to_check, 
                 "category": f"Blocked by {source_layer}"
             }).execute()
+            
+            # --- ALSO STORE IN ATTACK LOG TABLE ---
+            client_ip = request.headers.get("X-Forwarded-For")
+
+            if client_ip:
+                client_ip = client_ip.split(",")[0].strip()
+            else:
+                client_ip = request.remote_addr
+
+            if client_ip.startswith("::ffff:"):
+                client_ip = client_ip.replace("::ffff:", "")
+
+            # get location
+            try:
+                r = requests.get(f"http://ip-api.com/json/{client_ip}")
+                loc = r.json()
+                location = f"{loc.get('city','Unknown')}, {loc.get('country','Unknown')}"
+            except:
+                location = "Unknown"
+
+            supabase.table("attack_logs").insert({
+                "ip_address": client_ip,
+                "location": location,
+                "attack_type": "Cyberbullying",
+                "severity": "MEDIUM",
+                "blocked": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }).execute()
+            
         except Exception as e:
             print(f"Error logging incident: {e}")
 
@@ -763,6 +824,20 @@ def moderate_text():
 # moderation lockout function
 # In app.py
 # In app.py
+def cleanup_cyberbullying_logs():
+    
+    try:
+
+        five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+
+        supabase.table("attack_logs")\
+            .delete()\
+            .eq("attack_type","Cyberbullying")\
+            .lt("timestamp", five_minutes_ago)\
+            .execute()
+
+    except Exception as e:
+        print("Cleanup error:", e)
 
 @app.route('/api/set-lockout', methods=['GET'])
 def set_lockout():
@@ -782,14 +857,39 @@ def set_lockout():
 ########ADMIN MODULE
 
 # === ROUTE: DASHBOARD PAGE ===
-@app.route('/admin_dashboard')
+@app.route('/admin_dashboards')
 def admin_dashboard():
-    return render_template('admin_dashboard.html')
 
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+
+    return render_template('admin_dashboards.html')
+
+# ================= ADMIN PAGES =================
+
+@app.route('/admin_attack_logs')
+def admin_attack_logs():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    return render_template('admin_attack_logs.html')
+
+
+@app.route('/admin_users')
+def admin_users():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    return render_template('admin_users.html')
+
+
+@app.route('/admin_incidents')
+def admin_incidents():
+    if not session.get("admin"):
+        return redirect(url_for("login"))
+    return render_template('admin_incidents.html')
 
 # ADMIN DASHBOARD APIs (for charts and tables)
 # === API 1: CYBERBULLYING DATA ===
-@app.route('/api/admin_dashboard/bullying')
+@app.route('/api/admin_dashboards/bullying')
 def api_bullying():
     try:
         # 1. Get Repeat Offenders (From your existing 'users' table)
@@ -817,59 +917,127 @@ def api_bullying():
         return jsonify({"offenders": [], "incidents": []})
 
 # === API 2: NETWORK DATA (Real-time Graph & Alerts) ===
-@app.route('/api/admin_dashboard/network')
+@app.route('/api/admin_dashboards/network')
 def api_network():
-    # Set default "None" so the frontend doesn't crash if empty
-    data = {"rps": 0, "status": "Normal", "recent_logs": [], "latest_alert": "None"}
-    
-    # Force Absolute Path to ensure we find the log file
+    cleanup_cyberbullying_logs()
+
+    data = {
+        "rps": 0,
+        "status": "Normal",
+        "latest_alert": "None",
+        "latest_ip": None,
+        "latest_attack": None,
+        "location": None,
+        "severity": None,
+        "blocked": None,
+        "time": None
+    }
+
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE = os.path.join(BASE_DIR, 'server_traffic.log')
 
-    # --- A. Get Live Traffic Speed (For the Graph) ---
     try:
+
         if os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "r") as f:
-                lines = f.readlines()[-5000:] # Read a large chunk
-                current_time = time.time()
-                recent_count = 0
-                
+
+            with open(LOG_FILE,"r") as f:
+
+                lines = f.readlines()[-5000:]
+
+                now = time.time()
+                count = 0
+
                 for line in lines:
+
                     try:
+
                         parts = line.split(',')
-                        # Check if request happened in the last 1 second
-                        if float(parts[0]) > (current_time - 1):
-                            recent_count += 1
+
+                        if float(parts[0]) > (now - 10):
+                            count += 1
+
                     except:
                         continue
 
-                data["rps"] = recent_count
-                
-                if data["rps"] > 50: 
-                    data["status"] = "Critical"
-    except Exception as e:
-        print(f"Dashboard Graph Error: {e}")
+                data["rps"] = count
 
-    # --- B. Get Cloud Alerts (For the "Last Alert" Text) ---
-    try:
-        # Fetch the most recent alert from your Supabase table
-        alerts = supabase.table('network_alerts')\
-            .select('*')\
-            .order('timestamp', desc=True)\
-            .limit(1)\
-            .execute()
-        
-        # If we got data, format it for the dashboard
-        if getattr(alerts, 'data', None) and len(alerts.data) > 0:
-            last_alert = alerts.data[0]
-            data["latest_alert"] = f"{last_alert['attack_type']} from {last_alert['ip_address']}"
-            
+                if count > 50:
+                    data["status"] = "UNDER ATTACK"
+
     except Exception as e:
-        print(f"Supabase Fetch Error: {e}")
+
+        print("Graph error:",e)
+
+    # FETCH LATEST ATTACK
+
+    try:
+
+        res = supabase.table("attack_logs") \
+            .select("*") \
+            .order("timestamp",desc=True) \
+            .limit(1) \
+            .execute()
+
+        if res.data:
+
+            a = res.data[0]
+
+            data["latest_ip"] = a["ip_address"]
+            data["latest_attack"] = a["attack_type"]
+            data["location"] = a["location"]
+            data["severity"] = a["severity"]
+            data["blocked"] = a["blocked"]
+            data["time"] = a["timestamp"]
+
+            data["latest_alert"] = f'{a["attack_type"]} from {a["ip_address"]}'
+
+    except Exception as e:
+
+        print("DB error:",e)
 
     return jsonify(data)
 
+@app.route('/api/admin_dashboards/attacks')
+def get_attacks():
 
+    attack_type = request.args.get("type")
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    query = supabase.table("attack_logs").select("*")
+
+    if attack_type and attack_type != "":
+        query = query.eq("attack_type", attack_type)
+
+    if start and end:
+        query = query.gte("timestamp", start).lte("timestamp", end)
+
+    res = query.order("timestamp",desc=True).execute()
+
+    return jsonify(res.data)
+
+@app.route('/api/admin_dashboards/unblock_ip', methods=['POST'])
+def unblock_ip():
+
+    data = request.json
+    ip = data.get("ip")
+
+    # Remove from RAM firewall
+    if ip in BANNED_IPS:
+        BANNED_IPS.remove(ip)
+
+    try:
+        # DELETE attack record from Supabase
+        supabase.table("attack_logs")\
+            .delete()\
+            .eq("ip_address", ip)\
+            .execute()
+
+        return {"success": True}
+
+    except Exception as e:
+        print("Unblock error:", e)
+        return {"success": False}
 #########Mobile Attack Route (For fun testing of the WAF - Not linked anywhere, so it's a "secret" route)
 
 @app.route('/mobile_attack')
@@ -919,6 +1087,53 @@ def mobile_attack():
     </body>
     </html>
     """
+    
+@app.route('/forgot-password', methods=['GET','POST'])
+def forgot_password():
+
+    if request.method == "POST":
+
+        username = request.form['username']
+
+        result = supabase.table("users") \
+            .select("*") \
+            .eq("username", username) \
+            .execute()
+
+        if result.data:
+
+            session['reset_user'] = username
+            return redirect(url_for("reset_password"))
+
+        else:
+            flash("User not found")
+
+    return render_template("forgot_password.html")
+
+@app.route('/reset-password', methods=['GET','POST'])
+def reset_password():
+
+    if 'reset_user' not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+
+        password = request.form['password']
+
+        hashed_password = generate_password_hash(password)
+
+        supabase.table("users") \
+            .update({"password": hashed_password}) \
+            .eq("username", session['reset_user']) \
+            .execute()
+
+        session.pop("reset_user", None)
+
+        flash("Password updated successfully")
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html")
+
 # ---------- Run ----------
 if __name__ == '__main__':
     # host='0.0.0.0' opens the server to your local Wi-Fi
