@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta, timezone
 from supabase_client import supabase
 from dateutil import parser
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 
 
 # Load environment
@@ -21,6 +23,7 @@ load_dotenv()
 
 # ---------- Flask setup ----------
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret")
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -919,6 +922,7 @@ def api_bullying():
 # === API 2: NETWORK DATA (Real-time Graph & Alerts) ===
 @app.route('/api/admin_dashboards/network')
 def api_network():
+
     cleanup_cyberbullying_logs()
 
     data = {
@@ -940,7 +944,7 @@ def api_network():
 
         if os.path.exists(LOG_FILE):
 
-            with open(LOG_FILE,"r") as f:
+            with open(LOG_FILE, "r") as f:
 
                 lines = f.readlines()[-5000:]
 
@@ -950,10 +954,9 @@ def api_network():
                 for line in lines:
 
                     try:
-
                         parts = line.split(',')
 
-                        if float(parts[0]) > (now - 10):
+                        if float(parts[0]) > (now - 5):
                             count += 1
 
                     except:
@@ -961,20 +964,68 @@ def api_network():
 
                 data["rps"] = count
 
+                # =============================
+                # DOS DETECTION
+                # =============================
                 if count > 50:
+
                     data["status"] = "UNDER ATTACK"
 
+                    # -------------------------
+                    # GET ATTACKER IP
+                    # -------------------------
+                    client_ip = request.headers.get("X-Forwarded-For")
+
+                    if client_ip:
+                        client_ip = client_ip.split(",")[0].strip()
+                    else:
+                        client_ip = request.remote_addr
+
+                    if client_ip.startswith("::ffff:"):
+                        client_ip = client_ip.replace("::ffff:", "")
+
+                    # -------------------------
+                    # GET LOCATION
+                    # -------------------------
+                    try:
+                        r = requests.get(f"http://ip-api.com/json/{client_ip}")
+                        loc = r.json()
+                        location = f"{loc.get('city','Unknown')}, {loc.get('country','Unknown')}"
+                    except:
+                        location = "Unknown"
+
+                    # -------------------------
+                    # PREVENT DUPLICATE LOGS
+                    # -------------------------
+                    existing = supabase.table("attack_logs") \
+                        .select("*") \
+                        .eq("ip_address", client_ip) \
+                        .order("timestamp", desc=True) \
+                        .limit(1) \
+                        .execute()
+
+                    if not existing.data:
+
+                        supabase.table("attack_logs").insert({
+                            "ip_address": client_ip,
+                            "location": location,
+                            "attack_type": "DoS Attack",
+                            "severity": "HIGH",
+                            "blocked": False,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }).execute()
+
     except Exception as e:
+        print("Graph error:", e)
 
-        print("Graph error:",e)
-
+    # =============================
     # FETCH LATEST ATTACK
-
+    # =============================
     try:
 
         res = supabase.table("attack_logs") \
             .select("*") \
-            .order("timestamp",desc=True) \
+            .order("timestamp", desc=True) \
             .limit(1) \
             .execute()
 
@@ -992,8 +1043,7 @@ def api_network():
             data["latest_alert"] = f'{a["attack_type"]} from {a["ip_address"]}'
 
     except Exception as e:
-
-        print("DB error:",e)
+        print("DB error:", e)
 
     return jsonify(data)
 
@@ -1137,4 +1187,4 @@ def reset_password():
 # ---------- Run ----------
 if __name__ == '__main__':
     # host='0.0.0.0' opens the server to your local Wi-Fi
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run()
