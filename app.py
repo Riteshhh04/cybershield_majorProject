@@ -1091,18 +1091,17 @@ def unblock_ip():
 
     data = request.json
     ip = data.get("ip")
-    attack_id = data.get("id")
 
-    # Remove from firewall
+    # remove from firewall
     if ip in BANNED_IPS:
         BANNED_IPS.remove(ip)
 
     try:
 
-        # Delete ONLY that specific attack row
+        # delete all logs for that IP
         supabase.table("attack_logs")\
             .delete()\
-            .eq("id", attack_id)\
+            .eq("ip_address", ip)\
             .execute()
 
         return {"success": True}
@@ -1111,7 +1110,7 @@ def unblock_ip():
 
         print("Unblock error:", e)
         return {"success": False}
-    
+        
 ########Mobile Attack Route (For fun testing of the WAF - Not linked anywhere, so it's a "secret" route)
 
 @app.route('/mobile_attack')

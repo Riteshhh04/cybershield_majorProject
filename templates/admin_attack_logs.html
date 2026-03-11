@@ -113,7 +113,7 @@ ${new Date(a.timestamp).toLocaleString()}
 <td class="px-6 py-3 text-center">
 ${
 a.blocked
-? `<button onclick="unblock('${a.ip_address}','${a.id}')"
+? `<button onclick="unblock('${a.ip_address}')"
 class="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-1 rounded font-semibold text-xs">
 Unblock
 </button>`
@@ -128,14 +128,14 @@ Unblock
 
 }
 
-async function unblock(ip,id){
+async function unblock(ip){
 
 const res = await fetch("/api/admin_dashboards/unblock_ip",{
 method:"POST",
 headers:{
 "Content-Type":"application/json"
 },
-body:JSON.stringify({ip:ip,id:id})
+body:JSON.stringify({ip:ip})
 })
 
 const data = await res.json()
