@@ -61,6 +61,17 @@ SENDER_EMAIL = os.getenv("SENDER_EMAIL", app.config.get("MAIL_USERNAME"))
 BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")
 
 
+def get_client_ip():
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    else:
+        ip = request.remote_addr
+
+    if ip.startswith("::ffff:"):
+        ip = ip.replace("::ffff:", "")
+
+    return ip
 
 # CYBERSHIELD IN-MEMORY WAF (Web Application Firewall)
 # =================================================================
@@ -88,19 +99,12 @@ def active_firewall():
     if session.get("admin"):
         return
     
-    client_ip = request.headers.get("X-Forwarded-For")
-
-    if client_ip:
-        client_ip = client_ip.split(",")[0].strip()
-    else:
-        client_ip = request.remote_addr
-
-    # Convert IPv6 localhost format
-    if client_ip.startswith("::ffff:"):
-        client_ip = client_ip.replace("::ffff:", "")
+    client_ip = get_client_ip()
 
     if client_ip in BANNED_IPS:
-        abort(403, description="Connection Dropped: IP blocked by CyberShield AI.")
+        return jsonify({
+            "error":"Access denied. Your IP has been blocked by CyberShield."
+        }),403
 
 @app.route('/api/internal/block_ip', methods=['POST'])
 def internal_block_ip():
@@ -725,15 +729,7 @@ def moderate_text():
             }).execute()
             
             # --- ALSO STORE IN ATTACK LOG TABLE ---
-            client_ip = request.headers.get("X-Forwarded-For")
-
-            if client_ip:
-                client_ip = client_ip.split(",")[0].strip()
-            else:
-                client_ip = request.remote_addr
-
-            if client_ip.startswith("::ffff:"):
-                client_ip = client_ip.replace("::ffff:", "")
+            client_ip = get_client_ip()
 
             # get location
             try:
@@ -925,6 +921,7 @@ def api_bullying():
         print(f"Supabase Error: {e}")
         return jsonify({"offenders": [], "incidents": []})
 
+
 # === API 2: NETWORK DATA (Real-time Graph & Alerts) ===
 @app.route('/api/admin_dashboards/network')
 def api_network():
@@ -974,19 +971,14 @@ def api_network():
                 # =============================
                 # DOS DETECTION
                 # =============================
-                if count > 50:
+                if count > 30:
 
                     data["status"] = "UNDER ATTACK"
 
                     # -------------------------
                     # GET ATTACKER IP (Render Safe)
                     # -------------------------
-                    client_ip = request.headers.get(
-                        "X-Forwarded-For", request.remote_addr
-                    ).split(",")[0]
-
-                    if client_ip.startswith("::ffff:"):
-                        client_ip = client_ip.replace("::ffff:", "")
+                    client_ip = get_client_ip()
 
                     # -------------------------
                     # GET LOCATION
