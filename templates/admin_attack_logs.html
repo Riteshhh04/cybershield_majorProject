@@ -114,7 +114,7 @@ ${new Date(a.timestamp).toLocaleString()}
 <td class="px-6 py-3 text-center">
 ${
 a.blocked
-? `<button onclick="unblock('${a.ip_address}')"
+? `<button onclick="unblock('${a.ip_address}','${a.id}')"
 class="bg-yellow-500 hover:bg-yellow-600 text-black px-3 py-1 rounded font-semibold text-xs">
 Unblock
 </button>`
@@ -136,8 +136,15 @@ method:"POST",
 headers:{
 "Content-Type":"application/json"
 },
-body:JSON.stringify({ip:ip})
+body:JSON.stringify({ip:ip,id:id})
 })
+const data = await res.json()
+
+if(data.success){
+
+alert("IP unblocked successfully")
+location.reload()
+
 
 loadAttacks()
 
