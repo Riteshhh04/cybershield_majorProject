@@ -940,7 +940,8 @@ def api_network():
         "location": None,
         "severity": None,
         "blocked": None,
-        "time": None
+        "time": None,
+        "attacks": []
     }
 
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -978,14 +979,11 @@ def api_network():
                     data["status"] = "UNDER ATTACK"
 
                     # -------------------------
-                    # GET ATTACKER IP
+                    # GET ATTACKER IP (Render Safe)
                     # -------------------------
-                    client_ip = request.headers.get("X-Forwarded-For")
-
-                    if client_ip:
-                        client_ip = client_ip.split(",")[0].strip()
-                    else:
-                        client_ip = request.remote_addr
+                    client_ip = request.headers.get(
+                        "X-Forwarded-For", request.remote_addr
+                    ).split(",")[0]
 
                     if client_ip.startswith("::ffff:"):
                         client_ip = client_ip.replace("::ffff:", "")
@@ -1000,21 +998,23 @@ def api_network():
                     except:
                         location = "Unknown"
 
-                    # =============================
-                    # BLOCK ATTACKER IP
-                    # =============================
+                    # -------------------------
+                    # BLOCK ATTACKER
+                    # -------------------------
                     if client_ip not in BANNED_IPS:
+
                         BANNED_IPS.add(client_ip)
                         print(f"[WAF] IP BLOCKED: {client_ip}")
-                    
+
                     # -------------------------
                     # PREVENT DUPLICATE LOGS
                     # -------------------------
+                    recent_time = (datetime.utcnow() - timedelta(seconds=5)).isoformat()
+
                     existing = supabase.table("attack_logs") \
                         .select("*") \
                         .eq("ip_address", client_ip) \
-                        .order("timestamp", desc=True) \
-                        .limit(1) \
+                        .gte("timestamp", recent_time) \
                         .execute()
 
                     if not existing.data:
@@ -1024,19 +1024,20 @@ def api_network():
                             "location": location,
                             "attack_type": "DoS Attack",
                             "severity": "HIGH",
-                            "blocked": False,
+                            "blocked": True,
                             "timestamp": datetime.utcnow().isoformat()
                         }).execute()
 
     except Exception as e:
+
         print("Graph error:", e)
 
     # =============================
-    # FETCH LATEST ATTACK
+    # FETCH LATEST ATTACKS (ONLY LAST 2)
     # =============================
     try:
 
-        recent_time = (datetime.utcnow() - timedelta(seconds=10)).isoformat()
+        recent_time = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
 
         res = supabase.table("attack_logs") \
             .select("*") \
@@ -1049,18 +1050,19 @@ def api_network():
 
         if res.data:
 
-            a = res.data[0]
+            latest = res.data[0]
 
-            data["latest_ip"] = a["ip_address"]
-            data["latest_attack"] = a["attack_type"]
-            data["location"] = a["location"]
-            data["severity"] = a["severity"]
-            data["blocked"] = a["blocked"]
-            data["time"] = a["timestamp"]
+            data["latest_ip"] = latest["ip_address"]
+            data["latest_attack"] = latest["attack_type"]
+            data["location"] = latest["location"]
+            data["severity"] = latest["severity"]
+            data["blocked"] = latest["blocked"]
+            data["time"] = latest["timestamp"]
 
-            data["latest_alert"] = f'{a["attack_type"]} from {a["ip_address"]}'
+            data["latest_alert"] = f'{latest["attack_type"]} from {latest["ip_address"]}'
 
     except Exception as e:
+
         print("DB error:", e)
 
     return jsonify(data)
