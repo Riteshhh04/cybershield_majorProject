@@ -974,7 +974,7 @@ def api_network():
                     # -------------------------
                     # GET ATTACKER IP
                     # -------------------------
-                    client_ip = request.headers.get("X-Forwarded-For")
+                    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr).split(",")[0]
 
                     if client_ip:
                         client_ip = client_ip.split(",")[0].strip()
@@ -994,6 +994,13 @@ def api_network():
                     except:
                         location = "Unknown"
 
+                    # =============================
+                    # BLOCK ATTACKER IP
+                    # =============================
+                    if client_ip not in BANNED_IPS:
+                        BANNED_IPS.add(client_ip)
+                        print(f"[WAF] IP BLOCKED: {client_ip}")
+                    
                     # -------------------------
                     # PREVENT DUPLICATE LOGS
                     # -------------------------
