@@ -73,12 +73,29 @@ def get_client_ip():
 
     return ip
 
+def detect_bruteforce(ip):
+    
+    now = time.time()
+
+    attempts = LOGIN_ATTEMPTS.get(ip, [])
+
+    # keep attempts from last 60 seconds
+    attempts = [t for t in attempts if now - t < 60]
+
+    LOGIN_ATTEMPTS[ip] = attempts
+
+    if len(attempts) > 7:
+        return True
+
+    return False
+
 # CYBERSHIELD IN-MEMORY WAF (Web Application Firewall)
 # =================================================================
 # This acts as our ultra-fast RAM cache for blocked IPs
 BANNED_IPS = set()
 INTERNAL_API_KEY = "CyberShield_WAF_Secret_998877" # Security measure
-
+LOGIN_ATTEMPTS = {}
+BLOCKED_LOGINS = {}
 @app.before_request
 def active_firewall():
     whitelisted_routes = [
@@ -247,7 +264,61 @@ def register():
 # new login/lockout functionality
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    ip = get_client_ip()
 
+    # check if already blocked
+    if ip in BLOCKED_LOGINS:
+
+        if time.time() < BLOCKED_LOGINS[ip]:
+
+            return jsonify({
+                "success": False,
+                "message": "Too many login attempts. Try again later."
+            }),403
+
+    # record attempt
+    LOGIN_ATTEMPTS.setdefault(ip, []).append(time.time())
+
+    # detect brute force
+    if detect_bruteforce(ip):
+
+        BLOCKED_LOGINS[ip] = time.time() + 300
+
+        BANNED_IPS.add(ip)
+
+        print(f"[SECURITY] Brute Force detected from {ip}")
+    
+        # =========================
+        # GET ATTACKER LOCATION
+        # =========================
+        try:
+
+            r = requests.get(f"http://ip-api.com/json/{ip}")
+            loc = r.json()
+            location = f"{loc.get('city','Unknown')}, {loc.get('country','Unknown')}"
+
+        except:
+            location = "Unknown"
+
+        # =========================
+        # STORE ATTACK LOG
+        # =========================
+        supabase.table("attack_logs").insert({
+
+            "ip_address": ip,
+            "location": location,
+            "attack_type": "Brute Force",
+            "severity": "HIGH",
+            "blocked": True,
+            "timestamp": datetime.utcnow().isoformat()
+
+        }).execute()
+
+        return jsonify({
+            "success": False,
+            "message": "Too many login attempts. Your IP has been blocked."
+        }),403
+    
     if request.method == "GET":
         return render_template("login.html")
 
