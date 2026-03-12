@@ -143,30 +143,33 @@ def monitor():
                     features['unique_endpoints'],
                     features['error_rate']):
 
+                # ================= DETECTION LOGIC =================
+
                 attack_type = None
 
-                # ================= PORT SCAN =================
-                if err_rate > 0.7 and uniq_ep > 10:
+                # BRUTE FORCE
+                if req_rate > 10 and uniq_ep <= 2 and err_rate > 0.5:
+                    attack_type = "Brute Force"
+
+                # PORT SCAN
+                elif uniq_ep > 12 and err_rate > 0.7:
                     attack_type = "Port Scan"
 
-                # ================= ENDPOINT FLOOD =================
-                elif uniq_ep > 15 and req_rate > 30:
-                    attack_type = "Endpoint Flood"
-
-                # ================= RECONNAISSANCE =================
-                elif uniq_ep > 8 and err_rate > 0.5:
+                # RECONNAISSANCE
+                elif 6 <= uniq_ep <= 12 and err_rate > 0.5 and req_rate < 20:
                     attack_type = "Reconnaissance"
 
-                # ================= DDOS =================
+                # ENDPOINT FLOOD
+                elif uniq_ep > 8 and req_rate > 30:
+                    attack_type = "Endpoint Flood"
+
+                # DOS / DDOS
                 elif req_rate > 80:
-                    attack_type = "DDoS"
+                    attack_type = "DoS Attack"
 
-                # ================= ML ANOMALY =================
-                elif pred == -1 and req_rate > 50:
+                # ML anomaly fallback
+                elif pred == -1 and req_rate > 40:
                     attack_type = "Network Anomaly"
-                if not attack_type:
-                    continue
-
                 print(f"[ALERT] {attack_type} detected from {ip}")
 
                 # ================= GET GEO LOCATION =================
