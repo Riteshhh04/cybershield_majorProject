@@ -97,6 +97,30 @@ def detect_bruteforce(ip):
 
     return False
 
+SQL_PATTERNS = [
+    "' OR ",
+    "' OR 1=1",
+    "' OR '1'='1",
+    "UNION SELECT",
+    "DROP TABLE",
+    "--",
+    "#",
+    "/*",
+    "*/"
+]
+
+def detect_sql_injection(text):
+
+    if not text:
+        return False
+
+    text = text.lower()
+
+    for pattern in SQL_PATTERNS:
+        if pattern.lower() in text:
+            return True
+
+    return False
 # CYBERSHIELD IN-MEMORY WAF (Web Application Firewall)
 # =================================================================
 # This acts as our ultra-fast RAM cache for blocked IPs
@@ -351,6 +375,40 @@ def login():
     data = request.get_json() or request.form
     username = data.get("moodle_id")
     password = data.get("password")
+        # =========================
+    # SQL INJECTION DETECTION
+    # =========================
+
+    if detect_sql_injection(username) or detect_sql_injection(password):
+
+        attacker_ip = get_client_ip()
+
+        print(f"[SECURITY] SQL Injection detected from {attacker_ip}")
+
+        BANNED_IPS.add(attacker_ip)
+
+        # Get location
+        try:
+            r = requests.get(f"http://ip-api.com/json/{attacker_ip}")
+            loc = r.json()
+            location = f"{loc.get('city','Unknown')}, {loc.get('country','Unknown')}"
+        except:
+            location = "Unknown"
+
+        # Store attack log
+        supabase.table("attack_logs").insert({
+            "ip_address": attacker_ip,
+            "location": location,
+            "attack_type": "SQL Injection",
+            "severity": "CRITICAL",
+            "blocked": True,
+            "timestamp": datetime.utcnow().isoformat()
+        }).execute()
+
+        return jsonify({
+            "success": False,
+            "message": "SQL Injection detected. Your IP has been blocked."
+        }),403
 
     if not username or not password:
         return {"success": False, "message": "Username and password required"}, 400
