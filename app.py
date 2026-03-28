@@ -493,11 +493,11 @@ def login():
     # ==================================================
     # NORMAL DASHBOARD
     # ==================================================
-    return {
-        "success": True,
-        "message": "Login successful",
-        "redirect": "/dashboard"
-    }, 200
+    return jsonify({
+    "success": True,
+    "message": "Login successful",
+    "redirect": "/dashboard"
+}), 200
 
 
 @app.route("/change-password", methods=["GET", "POST"])
