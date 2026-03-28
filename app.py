@@ -563,7 +563,12 @@ def dashboard():
         resp = supabase.table("users").select("*").eq("id", session["user_id"]).execute()
         user = resp.data[0] if getattr(resp, "data", None) else {}
         must_change = user.get("must_change_password", True)
-        return render_template("dashboard.html", user_name=user.get("name", session.get("name")), must_change=must_change)
+        return render_template(
+            "dashboard.html",
+            user_name=user.get("name", session.get("name")),
+            user=user,   # ✅ ADD THIS LINE
+            must_change=must_change
+        )
     except Exception as e:
         print("Dashboard exception:", e)
         flash("Failed to load dashboard", "danger")
