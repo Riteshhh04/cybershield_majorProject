@@ -569,8 +569,79 @@ def dashboard():
         flash("Failed to load dashboard", "danger")
         return redirect(url_for("login"))
 
+def detect_xss(text):
+    if not text:
+        return False
 
+    text = text.lower()
 
+    patterns = [
+        "<script>",
+        "</script>",
+        "onerror=",
+        "onload=",
+        "javascript:",
+        "<img",
+        "<iframe",
+        "<svg",
+        "alert(",
+        "document.cookie"
+    ]
+
+    for pattern in patterns:
+        if pattern in text:
+            return True
+
+    return False
+
+@app.route('/update-status', methods=['POST'])
+def update_status():
+
+    if 'user_id' not in session:
+        return jsonify({"success": False}), 401
+
+    status = request.json.get("status")
+    ip = get_client_ip()
+
+    # =========================
+    # XSS DETECTION
+    # =========================
+    if detect_xss(status):
+
+        print(f"[SECURITY] XSS detected from {ip}")
+
+        BANNED_IPS.add(ip)
+
+        try:
+            r = requests.get(f"http://ip-api.com/json/{ip}")
+            loc = r.json()
+            location = f"{loc.get('city','Unknown')}, {loc.get('country','Unknown')}"
+        except:
+            location = "Unknown"
+
+        try:
+            supabase.table("attack_logs").insert({
+                "ip_address": ip,
+                "location": location,
+                "attack_type": "XSS Attack",
+                "severity": "CRITICAL",
+                "blocked": True,
+                "timestamp": datetime.utcnow().isoformat()
+            }).execute()
+        except Exception as e:
+            print("DB error:", e)
+
+        return jsonify({
+            "success": False,
+            "message": "XSS attack detected. IP blocked."
+        }),403
+
+    # SAVE NORMAL STATUS
+    supabase.table("users").update({
+        "status": status
+    }).eq("id", session["user_id"]).execute()
+
+    return jsonify({"success": True})
 
 
 @app.route("/logout")

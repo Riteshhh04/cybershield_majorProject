@@ -313,6 +313,29 @@ function initializeDashboard() {
     });
 }
 
+const statusForm = document.getElementById("statusForm");
+
+if (statusForm) {
+    statusForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const status = e.target.status.value;
+
+        const res = await fetch('/update-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+
+        const result = await res.json();
+
+        if (result.success) {
+            showAlert("Status updated", "success");
+        } else {
+            showAlert(result.message, "error");
+        }
+    });
+}
 // Smooth scrolling for anchor links
 function initializeSmoothScrolling() {
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {

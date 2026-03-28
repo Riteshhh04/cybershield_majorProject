@@ -136,6 +136,33 @@
         </div>
     </div>
 
+    <!-- Status Update (XSS Testing Area) -->
+    <div class="card" style="margin-top: 30px;">
+        <div class="card-body">
+            <h3 style="color: #667eea; margin-bottom: 20px;">
+                <i class="fas fa-edit"></i> Update Status
+            </h3>
+
+            <form id="statusForm">
+                <input type="text" name="status" 
+                    placeholder="Share your thoughts..." 
+                    class="form-input" 
+                    style="margin-bottom: 15px;">
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i> Post
+                </button>
+            </form>
+
+            <!-- Display Status -->
+            <div style="margin-top: 20px;">
+                <strong>Your Status:</strong>
+                <p style="margin-top:10px; color:#4a5568;">
+                    {{ user.status | e }}
+                </p>
+            </div>
+        </div>
+    </div>
     <!-- Quick Actions -->
     <div class="card" style="margin-top: 30px;">
         <div class="card-body">
