@@ -121,6 +121,37 @@ def detect_sql_injection(text):
             return True
 
     return False
+
+def detect_phishing(text):
+    if not text:
+        return False
+
+    text = text.lower()
+
+    suspicious_keywords = [
+        "login", "verify", "password", "bank", "account",
+        "urgent", "click here", "reset", "confirm"
+    ]
+
+    suspicious_domains = [
+        "bit.ly", "tinyurl", "shorturl",
+        "free-login", "secure-login", "verify-account"
+    ]
+
+    # Check for URLs
+    if "http://" in text or "https://" in text:
+        for domain in suspicious_domains:
+            if domain in text:
+                return True
+
+    # Check for phishing keywords
+    for word in suspicious_keywords:
+        if word in text:
+            if "http" in text:   # keyword + link combo
+                return True
+
+    return False
+
 # CYBERSHIELD IN-MEMORY WAF (Web Application Firewall)
 # =================================================================
 # This acts as our ultra-fast RAM cache for blocked IPs
@@ -812,6 +843,34 @@ def send_message():
             # 4. BLOCK THE MESSAGE (Do not save to 'messages' table)
             return jsonify({"success": False, "error": "⚠️ Message blocked: Toxic content detected. This incident has been logged."}), 400
 
+        # =========================
+        # PHISHING DETECTION
+        # =========================
+        if detect_phishing(message_text):
+
+            attacker_ip = get_client_ip()
+
+            print(f"[SECURITY] Phishing attempt detected from {attacker_ip}")
+
+            BANNED_IPS.add(attacker_ip)
+
+            try:
+                supabase.table("attack_logs").insert({
+                    "ip_address": attacker_ip,
+                    "location": "Unknown",
+                    "attack_type": "Phishing Attack",
+                    "severity": "HIGH",
+                    "blocked": True,
+                    "timestamp": datetime.utcnow().isoformat()
+                }).execute()
+            except Exception as e:
+                print("DB error:", e)
+
+            return jsonify({
+                "success": False,
+                "error": "Phishing attempt detected. IP blocked."
+            }),403
+            
         # ---------------------------------------------------------
         # IF SAFE: PROCEED NORMALLY
         # ---------------------------------------------------------
