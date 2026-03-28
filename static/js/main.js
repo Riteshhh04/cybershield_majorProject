@@ -76,9 +76,8 @@ function validatePhone(phone) {
 }
 
 function validateMoodleId(moodleId) {
-    if(username.length < 1){
-    alert("Username required");
-}
+    // Allow everything (for security testing)
+    return true;
 }
 
 // Registration form handler
@@ -184,8 +183,9 @@ function initializeLoginForm() {
             return;
         }
         
-        if (!validateMoodleId(data.moodle_id)) {
-            showAlert('Please enter a valid Moodle ID format (e.g., EDU24001)', 'error');
+        // Allow all inputs for security testing
+        if (!data.moodle_id) {
+            showAlert('Please enter your Moodle ID', 'error');
             return;
         }
         
@@ -242,9 +242,9 @@ if (result.success) {
         });
         
         moodleIdInput.addEventListener('blur', function() {
-            if (this.value && !validateMoodleId(this.value)) {
+            // Only UI hint, do NOT block input
+            if (this.value && !/^(EDU\d{5}|ADMIN\d{3})$/.test(this.value)) {
                 this.style.borderColor = '#f56565';
-                showAlert('Moodle ID should be in format: EDU24001', 'error');
             } else {
                 this.style.borderColor = '#e1e5e9';
             }
