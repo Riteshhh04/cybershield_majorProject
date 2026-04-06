@@ -1366,16 +1366,20 @@ def get_attacks():
 
     query = supabase.table("attack_logs").select("*")
 
-    if attack_type and attack_type != "":
+    # Attack type filter
+    if attack_type:
         query = query.eq("attack_type", attack_type)
 
-    if start and end:
-        query = query.gte("timestamp", start).lte("timestamp", end)
+    # Date filter (FIXED)
+    if start:
+        query = query.gte("timestamp", f"{start}T00:00:00")
 
-    res = query.order("timestamp",desc=True).execute()
+    if end:
+        query = query.lte("timestamp", f"{end}T23:59:59")
+
+    res = query.order("timestamp", desc=True).execute()
 
     return jsonify(res.data)
-
 @app.route('/api/admin_dashboards/unblock_ip', methods=['POST'])
 def unblock_ip():
 

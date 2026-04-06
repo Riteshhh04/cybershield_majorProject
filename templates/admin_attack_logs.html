@@ -19,13 +19,11 @@ Select Attack Type:
 
 <option value="">All Attacks</option>
 <option value="DoS">DoS</option>
-<option value="Cyberbullying">CyberBullying</option>
+<option value="Cyberbullying">Cyberbullying</option>
 <option value="SQL Injection">SQL Injection</option>
 <option value="XSS">XSS</option>
 <option value="Brute Force">Brute Force</option>
-<option value="Port Scan">Port Scan</option>
-<option value="Endpoint">Endpoint Flood</option>
-<option value="Reconnaissance">Reconnaissance</option>
+<option value="Phishing">Phishing</option>
 </select>
 <button onclick="loadAttacks()" class="bg-blue-600 px-4 py-2 rounded">
 Filter
@@ -63,25 +61,30 @@ Filter
 
 async function loadAttacks(){
 
+const params = new URLSearchParams()
+
 const type=document.getElementById("attackType").value
 const start=document.getElementById("startDate").value
 const end=document.getElementById("endDate").value
 
-let url="/api/admin_dashboards/attacks?"
-
 if(type){
-url+=`type=${type}&`
+  params.append("type", type)
 }
 
-if(start && end){
-url+=`start=${start}&end=${end}`
+if(start){
+  params.append("start", start)
 }
 
-const res=await fetch(url)
-const data=await res.json()
+if(end){
+  params.append("end", end)
+}
+
+const url = `/api/admin_dashboards/attacks?${params.toString()}`
+
+const res = await fetch(url)
+const data = await res.json()
 
 const table=document.getElementById("attackTable")
-
 table.innerHTML=""
 
 data.forEach(a=>{
