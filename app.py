@@ -161,35 +161,12 @@ LOGIN_ATTEMPTS = {}
 BLOCKED_LOGINS = {}
 @app.before_request
 def active_firewall():
-       
-    print("HEADERS:", dict(request.headers))
-    print("CLIENT IP:", get_client_ip())
-    
-    whitelisted_routes = [
-        '/admin_dashboards',
-        '/api/admin_dashboards/network',
-        '/api/admin_dashboards/bullying',
-        '/api/internal/block_ip',
-        '/static',
-        '/api/admin_dashboards',
-        '/admin_attack_logs',
-        '/admin_users',
-        '/admin_incidents'
-    ]
-    
-    for route in whitelisted_routes:
-        if request.path.startswith(route):
-            return None
-    if session.get("admin"):
-        return None
-    
+
     client_ip = get_client_ip()
 
-     # BLOCK ATTACKER
+    # 🔥 FIRST: BLOCK CHECK
     if client_ip in BANNED_IPS:
-
         print(f"[WAF] BLOCKED REQUEST from {client_ip}")
-
         return (
             """
             <html>
@@ -203,6 +180,68 @@ def active_firewall():
             """,
             403
         )
+
+    whitelisted_routes = [
+         '/admin_dashboards',
+         # '/api/admin_dashboards/network',
+         '/api/admin_dashboards/bullying',
+         '/api/internal/block_ip',
+         '/static',
+         '/api/admin_dashboards',
+         '/admin_attack_logs',
+         '/admin_users',
+         '/admin_incidents'
+     ]
+    # 🔥 THEN whitelist
+    for route in whitelisted_routes:
+        if request.path.startswith(route):
+            return None
+
+    if session.get("admin"):
+        return None
+# def active_firewall():
+       
+#     print("HEADERS:", dict(request.headers))
+#     print("CLIENT IP:", get_client_ip())
+    
+#     whitelisted_routes = [
+#         '/admin_dashboards',
+#         # '/api/admin_dashboards/network',
+#         '/api/admin_dashboards/bullying',
+#         '/api/internal/block_ip',
+#         '/static',
+#         '/api/admin_dashboards',
+#         '/admin_attack_logs',
+#         '/admin_users',
+#         '/admin_incidents'
+#     ]
+    
+#     for route in whitelisted_routes:
+#         if request.path.startswith(route):
+#             return None
+#     if session.get("admin"):
+#         return None
+    
+#     client_ip = get_client_ip()
+
+     # BLOCK ATTACKER
+    # if client_ip in BANNED_IPS:
+
+    #     print(f"[WAF] BLOCKED REQUEST from {client_ip}")
+
+    #     return (
+    #         """
+    #         <html>
+    #         <head><title>Access Denied</title></head>
+    #         <body style="background:#0f172a;color:white;text-align:center;padding-top:120px;font-family:Arial;">
+    #         <h1 style="color:red;">🚫 ACCESS DENIED</h1>
+    #         <h2>Your IP has been blocked by CyberShield</h2>
+    #         <p>Malicious activity detected.</p>
+    #         </body>
+    #         </html>
+    #         """,
+    #         403
+    #     )
 
 @app.route('/api/internal/block_ip', methods=['POST'])
 def internal_block_ip():
