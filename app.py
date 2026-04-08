@@ -183,7 +183,7 @@ def active_firewall():
 
     whitelisted_routes = [
          '/admin_dashboards',
-         # '/api/admin_dashboards/network',
+         '/api/admin_dashboards/network',
          '/api/admin_dashboards/bullying',
          '/api/internal/block_ip',
          '/static',
